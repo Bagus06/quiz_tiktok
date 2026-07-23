@@ -215,6 +215,35 @@ unset($_SESSION['errors'], $_SESSION['old']);
             <?php endforeach; ?>
             </section>
 
+            <section class="privacy-consent-panel">
+                <div class="privacy-consent-heading">
+                    <i class="fa-solid fa-user-shield" aria-hidden="true"></i>
+                    <div>
+                        <h2>Persetujuan Penggunaan Data Pribadi</h2>
+                        <p>Baca informasi berikut sebelum memberikan persetujuan.</p>
+                    </div>
+                </div>
+                <details class="privacy-details">
+                    <summary>Lihat rincian penggunaan data</summary>
+                    <div>
+                        <p>Affan Elektronik mengumpulkan nama, nomor WhatsApp, akun dan tautan profil TikTok, foto bukti, jawaban kuis, alamat IP, serta identitas teknis perangkat.</p>
+                        <p>Data digunakan untuk memverifikasi peserta, mencegah penyalahgunaan, melakukan koreksi, menghubungi pemenang, menyerahkan hadiah, dan memenuhi kewajiban penyelenggaraan acara.</p>
+                        <p>Data tidak digunakan untuk meminta pembayaran, tidak dijual, dan tidak digunakan untuk pemasaran tanpa persetujuan terpisah. Data operasional dihapus paling lambat <?=PRIVACY_RETENTION_DAYS?> hari setelah seluruh rangkaian acara selesai, kecuali wajib disimpan lebih lama berdasarkan hukum.</p>
+                        <p>Peserta dapat meminta akses, perbaikan, pembatasan, penarikan persetujuan, atau penghapusan data melalui <a href="<?=e(ORGANIZER_CONTACT_URL)?>" target="_blank" rel="noopener noreferrer"><?=e(ORGANIZER_CONTACT_LABEL)?></a>.</p>
+                    </div>
+                </details>
+                <p class="privacy-policy-link"><button type="button" data-open-privacy><i class="fa-solid fa-file-shield" aria-hidden="true"></i> Baca Kebijakan Privasi lengkap (versi <?=e(PRIVACY_POLICY_VERSION)?>)</button></p>
+                <label class="privacy-consent-check" for="privacy_consent">
+                    <input type="checkbox" id="privacy_consent" name="privacy_consent" value="1" required <?=!empty($old['privacy_consent']) ? 'checked' : ''?>>
+                    <span>Saya telah membaca dan menyetujui pengumpulan serta penggunaan data pribadi saya untuk keperluan penyelenggaraan Kuis TikTok Affan Elektronik sebagaimana dijelaskan di atas.</span>
+                </label>
+                <label class="privacy-consent-check age-confirmation" for="age_confirmation">
+                    <input type="checkbox" id="age_confirmation" name="age_confirmation" value="1" required <?=!empty($old['age_confirmation']) ? 'checked' : ''?>>
+                    <span>Saya menyatakan telah berusia sekurang-kurangnya 18 tahun, data yang saya kirim adalah milik saya, dan saya memiliki hak atau izin atas setiap foto yang diunggah.</span>
+                </label>
+                <small>Persetujuan wajib diberikan agar pendaftaran dapat diproses.</small>
+            </section>
+
             <div class="submit-panel">
                 <div><i class="fa-solid fa-circle-info" aria-hidden="true"></i><p><strong>Pastikan seluruh data sudah benar.</strong><span>Jawaban yang telah dikirim tidak dapat diubah kembali.</span></p></div>
                 <button type="submit" id="submitButton">Kirim Jawaban</button>
@@ -222,6 +251,25 @@ unset($_SESSION['errors'], $_SESSION['old']);
         </form>
         <?php endif; ?>
         <div class="check-box"><h2>Cek Hasil Koreksi</h2><p>Masukkan token untuk melihat status, pesan admin, dan nomor undian.</p><a class="secondary-button" href="check.php">Cek Token</a></div>
+        <p class="public-privacy-link"><button type="button" data-open-privacy><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Kebijakan Privasi Peserta</button></p>
+    </div>
+</div>
+
+<div class="modal privacy-modal" id="privacyModal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="privacyModalTitle">
+    <div class="modal-card privacy-modal-card">
+        <div class="modal-header privacy-modal-header">
+            <div>
+                <span class="modal-eyebrow">Informasi Peserta</span>
+                <h2 id="privacyModalTitle">Kebijakan Privasi</h2>
+            </div>
+            <button type="button" class="modal-close" data-close-privacy-modal aria-label="Tutup kebijakan privasi"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+        </div>
+        <div class="modal-body privacy-modal-body">
+            <?php require __DIR__.'/privacy-modal-content.php'; ?>
+        </div>
+        <div class="privacy-modal-actions">
+            <button type="button" class="secondary-button" data-close-privacy-modal>Saya Sudah Membaca</button>
+        </div>
     </div>
 </div>
 
@@ -237,6 +285,41 @@ unset($_SESSION['errors'], $_SESSION['old']);
     </div>
 </div>
 <script nonce="<?=cspNonce()?>">
+(function () {
+    var modal = document.getElementById('privacyModal');
+    var lastTrigger = null;
+    if (!modal) return;
+
+    function openPrivacyModal(event) {
+        lastTrigger = event.currentTarget;
+        modal.hidden = false;
+        modal.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('modal-open');
+        var closeButton = modal.querySelector('[data-close-privacy-modal]');
+        if (closeButton) closeButton.focus();
+    }
+
+    function closePrivacyModal() {
+        modal.hidden = true;
+        modal.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('modal-open');
+        if (lastTrigger) lastTrigger.focus();
+    }
+
+    document.querySelectorAll('[data-open-privacy]').forEach(function (button) {
+        button.addEventListener('click', openPrivacyModal);
+    });
+    modal.querySelectorAll('[data-close-privacy-modal]').forEach(function (button) {
+        button.addEventListener('click', closePrivacyModal);
+    });
+    modal.addEventListener('click', function (event) {
+        if (event.target === modal) closePrivacyModal();
+    });
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && !modal.hidden) closePrivacyModal();
+    });
+})();
+
 (function () {
     function showOfficialEventNotice() {
         if (typeof Swal === 'undefined') return;
