@@ -72,17 +72,32 @@ function db(): PDO {
     }
     return $pdo;
 }
-function participantSubmissionSchemaReady(): bool {
-    static $ready = null;
-    if ($ready !== null) return $ready;
+function participantSubmissionMissingColumns(): array {
     try {
         $required = ['privacy_consent_at', 'privacy_policy_version', 'age_confirmed_at'];
         $columns = db()->query('SHOW COLUMNS FROM participants')->fetchAll(PDO::FETCH_COLUMN);
-        return $ready = count(array_diff($required, $columns)) === 0;
+        return array_values(array_diff($required, $columns));
     } catch (Throwable $error) {
         error_log('[quiz_tiktok] Pemeriksaan skema submit gagal: '.$error->getMessage());
-        return $ready = false;
+        return ['schema_check_failed'];
     }
+}
+function participantSubmissionSchemaReady(): bool { return participantSubmissionMissingColumns() === []; }
+function upgradeParticipantSubmissionSchema(): array {
+    $definitions = [
+        'privacy_consent_at' => 'DATETIME NULL AFTER risk_reasons',
+        'privacy_policy_version' => 'VARCHAR(20) NULL AFTER privacy_consent_at',
+        'age_confirmed_at' => 'DATETIME NULL AFTER privacy_policy_version',
+    ];
+    $missing = participantSubmissionMissingColumns();
+    if (in_array('schema_check_failed', $missing, true)) throw new RuntimeException('Database tidak dapat diperiksa.');
+    $added = [];
+    foreach ($definitions as $column => $definition) {
+        if (!in_array($column, $missing, true)) continue;
+        db()->exec('ALTER TABLE participants ADD COLUMN `'.$column.'` '.$definition);
+        $added[] = $column;
+    }
+    return $added;
 }
 function logSubmissionFailure(Throwable $error): void {
     $reference = strtoupper(substr(bin2hex(random_bytes(6)), 0, 10));
