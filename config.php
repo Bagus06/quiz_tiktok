@@ -72,6 +72,31 @@ function db(): PDO {
     }
     return $pdo;
 }
+function participantSubmissionSchemaReady(): bool {
+    static $ready = null;
+    if ($ready !== null) return $ready;
+    try {
+        $required = ['privacy_consent_at', 'privacy_policy_version', 'age_confirmed_at'];
+        $columns = db()->query('SHOW COLUMNS FROM participants')->fetchAll(PDO::FETCH_COLUMN);
+        return $ready = count(array_diff($required, $columns)) === 0;
+    } catch (Throwable $error) {
+        error_log('[quiz_tiktok] Pemeriksaan skema submit gagal: '.$error->getMessage());
+        return $ready = false;
+    }
+}
+function logSubmissionFailure(Throwable $error): void {
+    $reference = strtoupper(substr(bin2hex(random_bytes(6)), 0, 10));
+    $_SESSION['submission_error_reference'] = $reference;
+    error_log(sprintf(
+        '[quiz_tiktok][submit:%s] %s code=%s message=%s file=%s line=%d',
+        $reference,
+        get_class($error),
+        (string)$error->getCode(),
+        str_replace(["\r", "\n"], ' ', $error->getMessage()),
+        basename($error->getFile()),
+        $error->getLine()
+    ));
+}
 function e(string $value): string { return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function cspNonce(): string { return e((string)CSP_NONCE); }
 function clientIp(): string { return substr((string)($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'), 0, 45); }
