@@ -1,0 +1,58 @@
+# Konfigurasi dan rahasia lokal
+config.local.php
+config.*.local.php
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+
+# File upload peserta (pertahankan placeholder struktur folder)
+uploads/**
+!uploads/
+!uploads/**/
+!uploads/**/index.html
+
+# Log, cache, session, dan file sementara
+*.log
+logs/
+cache/
+tmp/
+temp/
+sessions/
+*.tmp
+*.temp
+*.cache
+
+# Backup dan dump lokal
+*.bak
+*.backup
+*.old
+*.orig
+*.swp
+*.swo
+*~
+*.sql.gz
+*.sql.zip
+*.dump
+
+# Dependensi lokal bila ditambahkan kemudian
+/vendor/
+/node_modules/
+
+# IDE dan sistem operasi
+.idea/
+.vscode/
+.fleet/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Artefak pengujian dan coverage
+.phpunit.cache/
+.phpunit.result.cache
+coverage/

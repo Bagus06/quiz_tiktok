@@ -1,0 +1,7 @@
+<?php
+require dirname(__DIR__).'/config.php';requireAdmin();
+$type=(string)($_GET['type']??'');$relative='';$filename='bukti';
+if($type==='answer'){$imageId=(int)($_GET['image_id']??0);$s=db()->prepare('SELECT pai.image_path FROM participant_answer_images pai JOIN participant_answers pa ON pa.id=pai.participant_answer_id JOIN participants p ON p.id=pa.participant_id WHERE pai.id=? LIMIT 1');$s->execute([$imageId]);$relative=(string)$s->fetchColumn();$filename='jawaban-9';}
+elseif(in_array($type,['subscriber','comment'],true)){$id=(int)($_GET['id']??0);$column=$type==='subscriber'?'subscriber_photo':'comment_photo';$s=db()->prepare("SELECT $column FROM participants WHERE id=? LIMIT 1");$s->execute([$id]);$relative=(string)$s->fetchColumn();$filename=$type==='subscriber'?'foto-profile-tiktok':'bukti-komentar';}
+else{http_response_code(400);exit('Tipe tidak valid.');}
+$base=realpath(dirname(__DIR__).'/uploads');$path=realpath(dirname(__DIR__).'/'.$relative);if(!$relative||!$base||!$path||strpos($path,$base.DIRECTORY_SEPARATOR)!==0||!is_file($path)){http_response_code(404);exit('Foto tidak ditemukan.');}$mime=(new finfo(FILEINFO_MIME_TYPE))->file($path);if(!in_array($mime,['image/jpeg','image/png','image/webp'],true)){http_response_code(415);exit('Format tidak didukung.');}header('Content-Type: '.$mime);header('Content-Length: '.filesize($path));header('Cache-Control: private, no-store');header('Content-Disposition: inline; filename="'.$filename.'.jpg"');readfile($path);exit;
