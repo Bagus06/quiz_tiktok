@@ -77,6 +77,11 @@ button:not(.modal-close):not(.sponsor-logo-button):not(.template-button)::before
 .affan-swal-confirm,.affan-swal-cancel{border:0;border-radius:9px;padding:11px 18px;margin:4px;font-weight:800;cursor:pointer}
 .affan-swal-confirm{background:#b91c1c;color:#fff}.affan-swal-confirm:hover{background:#991b1b}
 .affan-swal-cancel{background:#e2e8f0;color:#334155}.affan-swal-cancel:hover{background:#cbd5e1}
+.event-notice-popup{width:min(600px,calc(100% - 24px));padding:24px}
+.event-official-notice{text-align:left}.event-official-notice p{margin:0 0 13px}.event-official-notice strong{color:#991b1b}
+.event-safety-reminder{display:flex;align-items:flex-start;gap:11px;margin-top:18px;padding:13px 14px;border:1px solid #fde68a;border-radius:11px;background:#fffbeb;color:#854d0e;font-size:13px;line-height:1.5}
+.event-safety-reminder i{flex:0 0 auto;margin-top:2px;font-size:18px}.event-notice-confirm{min-height:46px;padding:11px 18px}
+@media(max-width:520px){.event-notice-popup{padding:19px 14px}.event-notice-confirm{width:100%;font-size:13px}.event-official-notice{font-size:14px}.event-safety-reminder{padding:11px}}
 .secondary { background: #e2e8f0; color: #1e293b; margin-left: 8px; }
 .alert {
     background: #fff1f2;

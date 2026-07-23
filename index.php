@@ -238,6 +238,42 @@ unset($_SESSION['errors'], $_SESSION['old']);
 </div>
 <script nonce="<?=cspNonce()?>">
 (function () {
+    function showOfficialEventNotice() {
+        if (typeof Swal === 'undefined') return;
+
+        Swal.fire({
+            icon: 'info',
+            title: 'Informasi Resmi Penyelenggara',
+            html: '<div class="event-official-notice">' +
+                '<p>Event ini diselenggarakan secara <strong>GRATIS</strong> oleh <strong>Affan Elektronik</strong>.</p>' +
+                '<p>Affan Elektronik tidak pernah meminta biaya pendaftaran, biaya administrasi, atau pembayaran dalam bentuk apa pun kepada peserta.</p>' +
+                '<p>Apabila ada oknum atau pihak yang mengatasnamakan Affan Elektronik dan meminta pembayaran terkait event ini, mohon <strong>abaikan permintaan tersebut</strong> dan segera laporkan kepada pihak penyelenggara melalui akun resmi Affan Elektronik.</p>' +
+                '<div class="event-safety-reminder"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><span>Jangan memberikan uang, kata sandi, kode OTP, atau informasi rahasia kepada pihak mana pun.</span></div>' +
+                '</div>',
+            confirmButtonText: 'Saya Sudah Membaca dan Mengerti',
+            customClass: {
+                popup: 'affan-swal-popup event-notice-popup',
+                title: 'affan-swal-title',
+                htmlContainer: 'affan-swal-content',
+                confirmButton: 'affan-swal-confirm event-notice-confirm'
+            },
+            buttonsStyling: false,
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            showCloseButton: false,
+            focusConfirm: true
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', showOfficialEventNotice);
+    } else {
+        showOfficialEventNotice();
+    }
+})();
+</script>
+<script nonce="<?=cspNonce()?>">
+(function () {
     const form = document.getElementById('quizForm');
     const button = document.getElementById('submitButton');
     if (!form || !button) return;
