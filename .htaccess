@@ -1,0 +1,14 @@
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(?:DB|\.git|\.agents|\.codex)(?:/|$) - [F,L,NC]
+</IfModule>
+
+<FilesMatch "(?i)^(?:config\.local\.php|quiz_tiktok\.config\.php|\.env.*|.*\.(?:sql|log|bak|backup|old|orig|key|pem|p12|pfx))$">
+    Require all denied
+</FilesMatch>
+
+<IfModule mod_headers.c>
+    Header always unset X-Powered-By
+</IfModule>

@@ -1,9 +1,14 @@
 <?php
 declare(strict_types=1);
 error_reporting(E_ALL);
-ini_set('display_errors','1');
+ini_set('display_errors','0');
 
-$installed = is_file(__DIR__.'/config.local.php');
+$externalConfig = dirname(__DIR__).'/quiz_tiktok.config.php';
+$installed = is_file($externalConfig) || is_file(__DIR__.'/config.local.php');
+if ($installed && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(404);
+    exit('Halaman tidak ditemukan.');
+}
 $errors=[];$success=false;
 if ($_SERVER['REQUEST_METHOD']==='POST' && !$installed) {
     $host=trim((string)($_POST['db_host']??'localhost'));
@@ -44,6 +49,12 @@ CREATE TABLE IF NOT EXISTS participants (
  comment_photo VARCHAR(255) NOT NULL,
  token VARCHAR(32) NOT NULL,
  submit_ip VARCHAR(45) NULL,
+ device_hash CHAR(64) NOT NULL,
+ subscriber_image_hash CHAR(64) NOT NULL,
+ comment_image_hash CHAR(64) NOT NULL,
+ risk_status ENUM('clear','flagged') NOT NULL DEFAULT 'clear',
+ risk_score SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+ risk_reasons VARCHAR(1000) NULL,
  status ENUM('pending','reviewed') NOT NULL DEFAULT 'pending',
  correction_message TEXT NULL,
  correct_count TINYINT UNSIGNED NOT NULL DEFAULT 0,
@@ -51,8 +62,13 @@ CREATE TABLE IF NOT EXISTS participants (
  reviewed_at DATETIME NULL,
  UNIQUE KEY uq_name_normalized(name_normalized),
  UNIQUE KEY uq_whatsapp(whatsapp),
+ UNIQUE KEY uq_tiktok_account(tiktok_account),
+ UNIQUE KEY uq_device_hash(device_hash),
  UNIQUE KEY uq_token(token),
- KEY idx_status(status)
+ KEY idx_status(status),
+ KEY idx_subscriber_hash(subscriber_image_hash),
+ KEY idx_comment_hash(comment_image_hash),
+ KEY idx_risk_status(risk_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS participant_answers (
  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -66,14 +82,22 @@ CREATE TABLE IF NOT EXISTS participant_answers (
  CONSTRAINT fk_answer_participant FOREIGN KEY(participant_id) REFERENCES participants(id) ON DELETE CASCADE,
  CONSTRAINT fk_answer_question FOREIGN KEY(question_id) REFERENCES questions(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS participant_identity_locks (
+ identity_type ENUM('whatsapp','tiktok','device') NOT NULL,
+ identity_value VARCHAR(191) NOT NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ PRIMARY KEY(identity_type,identity_value)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS participant_answer_images (
  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
  participant_answer_id BIGINT UNSIGNED NOT NULL,
  image_path VARCHAR(255) NOT NULL,
+ image_hash CHAR(64) NOT NULL,
  sort_order TINYINT UNSIGNED NOT NULL,
  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
  UNIQUE KEY uq_answer_image_order(participant_answer_id,sort_order),
  KEY idx_answer_image_answer(participant_answer_id),
+ KEY idx_answer_image_hash(image_hash),
  CONSTRAINT fk_answer_image_answer FOREIGN KEY(participant_answer_id) REFERENCES participant_answers(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS raffle_sequence (
@@ -100,9 +124,13 @@ CREATE TABLE IF NOT EXISTS submission_attempts (
  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
  ip_address VARCHAR(45) NOT NULL,
  whatsapp VARCHAR(20) NULL,
+ tiktok_account VARCHAR(100) NULL,
+ device_hash CHAR(64) NULL,
  was_successful TINYINT(1) NOT NULL DEFAULT 0,
  attempted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
- KEY idx_submit_ip_time(ip_address,attempted_at)
+ KEY idx_submit_ip_time(ip_address,attempted_at),
+ KEY idx_submit_device_time(device_hash,attempted_at),
+ KEY idx_submit_tiktok_time(tiktok_account,attempted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS admin_login_attempts (
  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -123,11 +151,13 @@ SQL;
         $pdo->beginTransaction();
         $q=$pdo->prepare('INSERT IGNORE INTO questions(question_number,is_active) VALUES(?,1)');for($i=1;$i<=10;$i++)$q->execute([$i]);
         $pdo->prepare("INSERT INTO app_settings(setting_key,setting_value) VALUES('quiz_open','1') ON DUPLICATE KEY UPDATE setting_value=setting_value")->execute();
+        $pdo->prepare("INSERT INTO app_settings(setting_key,setting_value) VALUES('daily_participant_quota',?) ON DUPLICATE KEY UPDATE setting_value=setting_value")->execute(['200']);
+        $pdo->prepare("INSERT INTO app_settings(setting_key,setting_value) VALUES('quiz_mode','auto') ON DUPLICATE KEY UPDATE setting_value=setting_value")->execute();
         $pdo->exec("INSERT IGNORE INTO raffle_sequence(id,next_number) VALUES(1,1)");
         $hash=password_hash($adminPass,defined('PASSWORD_ARGON2ID')?PASSWORD_ARGON2ID:PASSWORD_DEFAULT);
         $a=$pdo->prepare('INSERT INTO admins(username,password_hash,must_change_password) VALUES(?,?,0) ON DUPLICATE KEY UPDATE password_hash=VALUES(password_hash),must_change_password=0');$a->execute([$adminUser,$hash]);
         $pdo->commit();
-        $config="<?php\ndeclare(strict_types=1);\nconst DB_HOST = ".var_export($host,true).";\nconst DB_PORT = ".$port.";\nconst DB_NAME = ".var_export($name,true).";\nconst DB_USER = ".var_export($user,true).";\nconst DB_PASS = ".var_export($pass,true).";\n";
+        $config="<?php\ndeclare(strict_types=1);\nconst DB_HOST = ".var_export($host,true).";\nconst DB_PORT = ".$port.";\nconst DB_NAME = ".var_export($name,true).";\nconst DB_USER = ".var_export($user,true).";\nconst DB_PASS = ".var_export($pass,true).";\nconst APP_KEY = ".var_export(bin2hex(random_bytes(32)),true).";\n";
         if(file_put_contents(__DIR__.'/config.local.php',$config,LOCK_EX)===false)throw new RuntimeException('Gagal menulis config.local.php. Pastikan folder dapat ditulis sementara.');
         @chmod(__DIR__.'/config.local.php',0600);
         foreach(['uploads','uploads/subscriber','uploads/comment','uploads/answer10'] as $dir){$p=__DIR__.'/'.$dir;if(!is_dir($p)&&!mkdir($p,0755,true))throw new RuntimeException('Gagal membuat folder '.$dir);@file_put_contents($p.'/index.html','');}

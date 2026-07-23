@@ -1,5 +1,9 @@
 <?php
 require dirname(__DIR__).'/config.php';
+ob_start(static function (string $html): string {
+    $html = preg_replace('/\s+onerror="[^"]*"/', '', $html) ?? $html;
+    return str_replace('<script>', '<script nonce="'.cspNonce().'">', $html);
+});
 requireAdmin();
 if (!empty($_SESSION['must_change_password'])) { header('Location: password.php'); exit; }
 

@@ -1,6 +1,7 @@
 <?php
 require __DIR__.'/config.php';
 $token = strtoupper(trim((string)($_GET['token'] ?? '')));
+if ($token === '') $token = rememberedParticipantToken() ?? '';
 $participant = null;
 $raffles = [];
 if ($token !== '') {

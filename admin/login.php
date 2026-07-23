@@ -1,6 +1,7 @@
 <?php
 require dirname(__DIR__).'/config.php';
 if (!empty($_SESSION['admin_id'])) { header('Location: index.php'); exit; }
+cleanupSecurityLogs();
 $error = '';
 $ip = clientIp();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -13,6 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $limit = db()->prepare("SELECT COUNT(*) FROM admin_login_attempts WHERE was_successful=0 AND attempted_at>=DATE_SUB(NOW(),INTERVAL {$minutes} MINUTE) AND (ip_address=? OR username=?)");
         $limit->execute([$ip, $username]);
         if ((int)$limit->fetchColumn() >= MAX_ADMIN_ATTEMPTS) {
+            http_response_code(429);
             usleep(random_int(500000, 900000));
             $error = 'Terlalu banyak percobaan. Coba lagi setelah '.ADMIN_LOCK_MINUTES.' menit.';
         } else {
@@ -26,6 +28,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['admin_id'] = (int)$admin['id'];
                 $_SESSION['admin_username'] = (string)$admin['username'];
                 $_SESSION['admin_last_activity'] = time();
+                $_SESSION['admin_session_started'] = time();
+                $_SESSION['admin_session_renewed'] = time();
                 $_SESSION['must_change_password'] = (int)$admin['must_change_password'];
                 header('Location: '.((int)$admin['must_change_password'] === 1 ? 'password.php' : 'index.php')); exit;
             }

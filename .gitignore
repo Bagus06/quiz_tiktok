@@ -1,6 +1,7 @@
 # Konfigurasi dan rahasia lokal
 config.local.php
 config.*.local.php
+/DB/
 .env
 .env.*
 !.env.example
@@ -16,6 +17,7 @@ uploads/**
 !uploads/
 !uploads/**/
 !uploads/**/index.html
+!uploads/.htaccess
 
 # Log, cache, session, dan file sementara
 *.log

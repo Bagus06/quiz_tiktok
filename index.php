@@ -1,7 +1,30 @@
 <?php
 require __DIR__ . '/config.php';
 
-$quizOpen = quizIsOpen();
+$deviceHash = deviceHash();
+$rememberedToken = rememberedParticipantToken();
+if ($rememberedToken !== null) {
+    $remembered = db()->prepare('SELECT 1 FROM participants WHERE token=? LIMIT 1');
+    $remembered->execute([$rememberedToken]);
+    if ($remembered->fetchColumn()) {
+        header('Location: check.php?token='.rawurlencode($rememberedToken));
+        exit;
+    }
+    clearLongCookie('quiz_participant');
+}
+
+$quizStatus = quizPublicStatus();
+$quizOpen = $quizStatus === 'open';
+$dailyQuota = 0;
+$dailyQuotaRemaining = 0;
+if ($quizOpen) {
+    $dailyQuota = dailyParticipantQuota();
+    $dailyParticipantCount = (int)db()->query("SELECT COUNT(*) FROM participants WHERE submitted_at >= CURDATE() AND submitted_at < CURDATE() + INTERVAL 1 DAY")->fetchColumn();
+    $dailyQuotaRemaining = max(0, $dailyQuota - $dailyParticipantCount);
+}
+$quizSchedule = quizScheduleSettings();
+$quizPeriodStart = $quizSchedule['start_at'] !== '' ? date('d/m/Y H:i', strtotime($quizSchedule['start_at'])) : '';
+$quizPeriodEnd = $quizSchedule['end_at'] !== '' ? date('d/m/Y H:i', strtotime($quizSchedule['end_at'])) : '';
 $questions = db()->query('SELECT id, question_number FROM questions WHERE is_active = 1 ORDER BY question_number ASC')->fetchAll();
 $errors = $_SESSION['errors'] ?? [];
 $old = $_SESSION['old'] ?? [];
@@ -16,6 +39,7 @@ unset($_SESSION['errors'], $_SESSION['old']);
     <link rel="icon" type="image/png" href="assets/favicon.png">
     <link rel="shortcut icon" href="assets/favicon.ico">
     <link rel="stylesheet" href="assets/style.css">
+    <script src="assets/sweetalert2.all.min.js" defer></script>
 </head>
 <body>
 <div class="container">
@@ -51,8 +75,30 @@ unset($_SESSION['errors'], $_SESSION['old']);
             <a class="organizer-link" href="https://www.tiktok.com/@affan.balap?is_from_webapp=1&amp;sender_device=pc" target="_blank" rel="noopener noreferrer">Buka TikTok Penyelenggara: @affan.balap</a>
         </header>
 
-        <?php if (!$quizOpen): ?>
-            <div class="alert"><strong>Sesi kuis telah ditutup.</strong> Formulir tidak menerima jawaban baru. Peserta tetap dapat memeriksa hasil melalui menu Cek Token.</div>
+        <?php if ($quizStatus === 'not_started'): ?>
+            <div class="alert"><strong>Kuis belum dimulai.</strong> Formulir akan dibuka secara otomatis sesuai jadwal yang tertera. Silakan kembali setelah periode kuis dimulai.</div>
+        <?php elseif ($quizStatus === 'ended'): ?>
+            <div class="alert"><strong>Periode kuis telah berakhir.</strong> Formulir sudah tidak menerima jawaban baru. Peserta tetap dapat memeriksa hasil melalui menu Cek Token.</div>
+        <?php elseif ($quizStatus === 'closed_by_admin'): ?>
+            <div class="alert"><strong>Sesi kuis sedang ditutup oleh administrator.</strong> Formulir untuk sementara tidak menerima jawaban baru. Peserta tetap dapat memeriksa hasil melalui menu Cek Token.</div>
+        <?php endif; ?>
+
+        <?php if ($quizOpen): ?>
+        <div class="daily-quota-card <?=$dailyQuotaRemaining > 0 ? 'available' : 'full'?>" aria-live="polite">
+            <div class="daily-quota-icon"><i class="fa-solid fa-users" aria-hidden="true"></i></div>
+            <div class="daily-quota-info">
+                <strong>Kuota Peserta Hari Ini</strong>
+                <span><?=$dailyQuotaRemaining > 0 ? 'Masih tersedia '.number_format($dailyQuotaRemaining, 0, ',', '.').' dari '.number_format($dailyQuota, 0, ',', '.').' kuota.' : 'Kuota peserta hari ini telah habis.'?></span>
+            </div>
+            <div class="daily-quota-number"><?=number_format($dailyQuotaRemaining, 0, ',', '.')?></div>
+        </div>
+        <?php endif; ?>
+
+        <?php if ($quizPeriodStart !== '' && $quizPeriodEnd !== ''): ?>
+        <div class="quiz-period-card">
+            <i class="fa-solid fa-calendar-days" aria-hidden="true"></i>
+            <div><strong>Periode Kuis</strong><span><?=$quizPeriodStart?> WIB — <?=$quizPeriodEnd?> WIB</span></div>
+        </div>
         <?php endif; ?>
 
         <?php if ($errors): ?>
@@ -67,10 +113,21 @@ unset($_SESSION['errors'], $_SESSION['old']);
         <?php endif; ?>
 
         <?php if ($quizOpen): ?>
+        <div class="participation-summary">
+            <div><i class="fa-solid fa-mobile-screen-button" aria-hidden="true"></i><span><strong>Satu perangkat</strong><small>Hanya satu kali pengiriman</small></span></div>
+            <div><i class="fa-brands fa-whatsapp" aria-hidden="true"></i><span><strong>WhatsApp aktif</strong><small>Digunakan untuk konfirmasi</small></span></div>
+            <div><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><span><strong>Data terlindungi</strong><small>Periksa sebelum mengirim</small></span></div>
+        </div>
         <form action="submit.php" method="post" enctype="multipart/form-data" id="quizForm">
             <input type="text" name="website" value="" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
             <input type="hidden" name="csrf_token" value="<?= e(csrfToken()) ?>">
+            <input type="hidden" name="form_proof" value="<?= e(formProof()) ?>">
 
+            <section class="form-section participant-section">
+                <div class="form-section-heading">
+                    <span class="section-number">1</span>
+                    <div><h2>Identitas Peserta</h2><p>Lengkapi identitas yang valid agar panitia dapat menghubungi Anda.</p></div>
+                </div>
             <div class="grid">
                 <div class="field">
                     <label for="name">Nama lengkap</label>
@@ -86,26 +143,28 @@ unset($_SESSION['errors'], $_SESSION['old']);
                 <div class="field">
                     <label for="tiktok_account">Akun TikTok / Username TikTok</label>
                     <input type="text" id="tiktok_account" name="tiktok_account" maxlength="50" placeholder="Contoh: affan.balap" required value="<?= e($old['tiktok_account'] ?? '') ?>" autocomplete="off" autocapitalize="none" spellcheck="false">
-                    <small>Masukkan username saja. Tanda <b>@</b> boleh ditulis atau tidak.</small>
+                    <small>Masukkan username yang tampil setelah tanda <b>@</b>. Kolom link akan terisi otomatis.</small>
                     <details class="input-guide">
                         <summary>Cara melihat username TikTok</summary>
                         <ol>
-                            <li>Buka aplikasi TikTok dan pilih menu <b>Profil</b>.</li>
-                            <li>Lihat tulisan yang diawali tanda <b>@</b> di bawah nama profil.</li>
-                            <li>Contoh: <b>@affan.balap</b>. Anda cukup mengisi <b>affan.balap</b>.</li>
+                            <li>Buka aplikasi TikTok, lalu ketuk <b>Profil</b> di bagian bawah.</li>
+                            <li>Lihat nama pengguna yang diawali tanda <b>@</b> pada halaman profil.</li>
+                            <li>Contoh <b>@affan.balap</b>; isi username tanpa tanda <b>@</b>.</li>
+                            <li>Jangan gunakan Nama/Nickname karena berbeda dengan Username.</li>
                         </ol>
                     </details>
                 </div>
                 <div class="field">
                     <label for="tiktok_profile_url">Link Profile</label>
                     <input type="text" inputmode="url" id="tiktok_profile_url" name="tiktok_profile_url" maxlength="500" placeholder="https://www.tiktok.com/@username" required value="<?= e($old['tiktok_profile_url'] ?? '') ?>" autocapitalize="none" spellcheck="false">
-                    <small>Tempel tautan profil TikTok Anda, bukan tautan video.</small>
+                    <small>Tempel link profil TikTok. Jika username sudah diisi, link dibuat otomatis.</small>
                     <details class="input-guide">
                         <summary>Cara menyalin link profil TikTok</summary>
                         <ol>
-                            <li>Buka aplikasi TikTok dan masuk ke menu <b>Profil</b>.</li>
-                            <li>Tekan tombol <b>Bagikan Profil</b> atau ikon bagikan.</li>
-                            <li>Pilih <b>Salin tautan</b>, kemudian tempel pada kolom ini.</li>
+                            <li>Buka aplikasi TikTok, lalu ketuk <b>Profil</b> di bagian bawah.</li>
+                            <li>Di halaman profil, ketuk tombol <b>Bagikan profil</b>.</li>
+                            <li>Pilih <b>Salin tautan</b>, lalu kembali ke formulir dan tempel link tersebut.</li>
+                            <li>Link yang benar berbentuk <b>tiktok.com/@username</b>, bukan link video.</li>
                         </ol>
                     </details>
                 </div>
@@ -123,19 +182,23 @@ unset($_SESSION['errors'], $_SESSION['old']);
                     <small>Maksimal 5 MB. Format JPG, PNG, atau WEBP.</small>
                 </div>
             </div>
+            </section>
 
-            <hr>
-            <h2>Soal Esai</h2>
+            <section class="form-section answer-section">
+                <div class="form-section-heading">
+                    <span class="section-number">2</span>
+                    <div><h2>Jawaban Kuis</h2><p>Jawab seluruh pertanyaan dengan teliti berdasarkan video kuis.</p></div>
+                </div>
 
             <?php foreach ($questions as $index => $question): ?>
                 <?php if ((int)$question['question_number'] === 10): ?>
                     <div class="field question">
-                        <label>Jawaban Nomor 10 — Upload 3 Gambar</label>
+                        <label>Jawaban Nomor 10 — Upload hingga 3 Gambar (opsional)</label>
                         <div class="grid three-columns">
                             <?php for ($imageNo = 1; $imageNo <= 3; $imageNo++): ?>
                                 <div>
                                     <label for="answer10_image_<?=$imageNo?>">Gambar <?=$imageNo?></label>
-                                    <input type="file" id="answer10_image_<?=$imageNo?>" name="answer10_images[]" accept="image/jpeg,image/png,image/webp" required>
+                                    <input type="file" id="answer10_image_<?=$imageNo?>" name="answer10_images[]" accept="image/jpeg,image/png,image/webp">
                                 </div>
                             <?php endfor; ?>
                         </div>
@@ -150,8 +213,12 @@ unset($_SESSION['errors'], $_SESSION['old']);
                     </div>
                 <?php endif; ?>
             <?php endforeach; ?>
+            </section>
 
-            <button type="submit" id="submitButton">Kirim Jawaban</button>
+            <div class="submit-panel">
+                <div><i class="fa-solid fa-circle-info" aria-hidden="true"></i><p><strong>Pastikan seluruh data sudah benar.</strong><span>Jawaban yang telah dikirim tidak dapat diubah kembali.</span></p></div>
+                <button type="submit" id="submitButton">Kirim Jawaban</button>
+            </div>
         </form>
         <?php endif; ?>
         <div class="check-box"><h2>Cek Hasil Koreksi</h2><p>Masukkan token untuk melihat status, pesan admin, dan nomor undian.</p><a class="secondary-button" href="check.php">Cek Token</a></div>
@@ -169,7 +236,7 @@ unset($_SESSION['errors'], $_SESSION['old']);
         </div>
     </div>
 </div>
-<script>
+<script nonce="<?=cspNonce()?>">
 (function () {
     const form = document.getElementById('quizForm');
     const button = document.getElementById('submitButton');
@@ -177,6 +244,43 @@ unset($_SESSION['errors'], $_SESSION['old']);
 
     let submitting = false;
     const originalText = button.textContent;
+    const accountInput = document.getElementById('tiktok_account');
+    const profileInput = document.getElementById('tiktok_profile_url');
+    let syncingTikTok = false;
+
+    function usernameFromProfile(value) {
+        try {
+            const url = new URL(value.trim());
+            if (!['tiktok.com', 'www.tiktok.com', 'm.tiktok.com'].includes(url.hostname.toLowerCase())) return '';
+            const match = url.pathname.match(/^\/@([a-z0-9._]{2,50})\/?$/i);
+            return match ? match[1].toLowerCase() : '';
+        } catch (error) { return ''; }
+    }
+    function normalizeUsername(value) {
+        return value.trim().replace(/^@+/, '').toLowerCase().replace(/[^a-z0-9._]/g, '').slice(0, 50);
+    }
+    if (accountInput && profileInput) {
+        accountInput.addEventListener('input', function () {
+            if (syncingTikTok) return;
+            const username = normalizeUsername(accountInput.value);
+            if (accountInput.value !== username) accountInput.value = username;
+            if (username) profileInput.value = 'https://www.tiktok.com/@' + username;
+        });
+        profileInput.addEventListener('input', function () {
+            if (syncingTikTok) return;
+            const username = usernameFromProfile(profileInput.value);
+            if (username) {
+                syncingTikTok = true;
+                accountInput.value = username;
+                profileInput.value = 'https://www.tiktok.com/@' + username;
+                syncingTikTok = false;
+            }
+        });
+        profileInput.addEventListener('paste', function () {
+            setTimeout(function () { profileInput.dispatchEvent(new Event('input', {bubbles: true})); }, 0);
+        });
+        if (!accountInput.value && profileInput.value) profileInput.dispatchEvent(new Event('input', {bubbles: true}));
+    }
 
     window.addEventListener('pageshow', function () {
         submitting = false;
@@ -239,8 +343,32 @@ unset($_SESSION['errors'], $_SESSION['old']);
         event.preventDefault();
         submitting = true;
         button.disabled = true;
-        button.textContent = 'Menyiapkan foto...';
         try {
+            const confirmation = await Swal.fire({
+                icon: 'warning',
+                title: 'Pastikan data sudah benar',
+                html: '<div class="submit-notice"><p><strong>1 perangkat hanya dapat melakukan 1 kali submit.</strong></p><p>Mohon kirimkan nomor WhatsApp yang aktif digunakan, karena konfirmasi pemenang akan dilakukan melalui WhatsApp.</p><p>Data yang sudah dikirim tidak dapat diubah.</p></div>',
+                showCancelButton: true,
+                confirmButtonText: 'Ya, Kirim Sekarang',
+                cancelButtonText: 'Periksa Kembali',
+                reverseButtons: true,
+                focusCancel: true,
+                customClass: {
+                    popup: 'affan-swal-popup',
+                    title: 'affan-swal-title',
+                    htmlContainer: 'affan-swal-content',
+                    confirmButton: 'affan-swal-confirm',
+                    cancelButton: 'affan-swal-cancel'
+                },
+                buttonsStyling: false,
+                allowOutsideClick: false
+            });
+            if (!confirmation.isConfirmed) {
+                submitting = false;
+                button.disabled = false;
+                return;
+            }
+            button.textContent = 'Menyiapkan foto...';
             await compressSelectedImages();
             button.textContent = 'Mengunggah dan menyimpan...';
             setTimeout(function () {
@@ -257,7 +385,7 @@ unset($_SESSION['errors'], $_SESSION['old']);
 })();
 </script>
 
-<script>
+<script nonce="<?=cspNonce()?>">
 (function () {
     const modal = document.getElementById('sponsorModal');
     const modalImage = document.getElementById('sponsorModalImage');
