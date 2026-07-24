@@ -322,3 +322,5 @@ function paginationUrl(array $changes): string {
     $query = http_build_query($params);
     return 'index.php'.($query !== '' ? '?'.$query : '');
 }
+
+require_once __DIR__.'/database_migrations.php';

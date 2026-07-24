@@ -1,16 +1,20 @@
 <?php
 require __DIR__.'/config.php';
-$token = strtoupper(trim((string)($_GET['token'] ?? '')));
-if ($token === '') $token = rememberedParticipantToken() ?? '';
+$lookupProvided = array_key_exists('lookup', $_GET) || array_key_exists('token', $_GET);
+$lookup = trim((string)($_GET['lookup'] ?? $_GET['token'] ?? ''));
+if (!$lookupProvided && $lookup === '') $lookup = rememberedParticipantToken() ?? '';
 $participant = null;
 $raffles = [];
-if ($token !== '') {
-    $st = db()->prepare('SELECT name,token,status,correction_message,correct_count,submitted_at,reviewed_at FROM participants WHERE token=? LIMIT 1');
-    $st->execute([$token]);
+if ($lookup !== '') {
+    $tokenCandidate = strtoupper($lookup);
+    $whatsappCandidate = normalizeWhatsapp($lookup);
+    $tiktokCandidate = mb_strtolower(ltrim($lookup, '@'));
+    $st = db()->prepare('SELECT id,name,token,status,correction_message,correct_count,submitted_at,reviewed_at FROM participants WHERE token=? OR whatsapp=? OR tiktok_account=? LIMIT 1');
+    $st->execute([$tokenCandidate, $whatsappCandidate, $tiktokCandidate]);
     $participant = $st->fetch();
     if ($participant && $participant['status'] === 'reviewed') {
-        $r = db()->prepare('SELECT raffle_number FROM raffle_numbers WHERE participant_id=(SELECT id FROM participants WHERE token=?) ORDER BY id');
-        $r->execute([$token]);
+        $r = db()->prepare('SELECT raffle_number FROM raffle_numbers WHERE participant_id=? ORDER BY id');
+        $r->execute([(int)$participant['id']]);
         $raffles = $r->fetchAll();
     }
 }
@@ -20,7 +24,7 @@ if ($token !== '') {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Bolone Affan | Cek Token</title>
+    <title>Bolone Affan | Cek Hasil Peserta</title>
     <link rel="icon" type="image/png" href="assets/bolone-favicon.png">
     <link rel="shortcut icon" href="assets/bolone-favicon.ico">
     <link rel="stylesheet" href="assets/style.css">
@@ -31,16 +35,17 @@ if ($token !== '') {
         <header class="bolone-page-header">
             <img src="assets/sponsor-bolone-affan.png" alt="Bolone Affan" class="bolone-page-logo">
         </header>
-        <h1>Cek Token</h1>
+        <h1>Cek Hasil Peserta</h1>
         <form method="get">
             <div class="field">
-                <label>Token peserta</label>
-                <input name="token" value="<?=e($token)?>" maxlength="40" required autocomplete="off">
+                <label>Token, Nomor WhatsApp, atau Username TikTok</label>
+                <input name="lookup" value="<?=e($lookup)?>" maxlength="100" placeholder="Contoh: TKN-..., 0812..., atau @username" required autocomplete="off">
+                <small>Masukkan salah satu data yang digunakan saat mendaftar.</small>
             </div>
             <button type="submit">Cek Hasil</button>
         </form>
-        <?php if ($token !== '' && !$participant): ?>
-            <div class="alert">Token tidak ditemukan.</div>
+        <?php if ($lookup !== '' && !$participant): ?>
+            <div class="alert">Data peserta tidak ditemukan. Periksa kembali token, nomor WhatsApp, atau username TikTok Anda.</div>
         <?php endif; ?>
         <?php if ($participant): ?>
             <div class="result">

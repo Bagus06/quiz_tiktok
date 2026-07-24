@@ -14,7 +14,7 @@ if(!participantSubmissionSchemaReady()){$_SESSION['errors']=['Sistem pendaftaran
 $dailyQuota = dailyParticipantQuota();
 $dailyParticipants = (int)db()->query("SELECT COUNT(*) FROM participants WHERE submitted_at >= CURDATE() AND submitted_at < CURDATE() + INTERVAL 1 DAY")->fetchColumn();
 if($dailyParticipants >= $dailyQuota){$_SESSION['errors']=['Mohon maaf, kuota peserta untuk hari ini telah terpenuhi. Silakan mencoba kembali besok.'];header('Location:index.php');exit;}
-$errors=[];$name=trim((string)($_POST['name']??''));$nameNormalized=mb_strtolower(preg_replace('/\s+/u',' ',$name)??$name);$waRaw=trim((string)($_POST['whatsapp']??''));$wa=normalizeWhatsapp($waRaw);$tiktokAccountRaw=trim((string)($_POST['tiktok_account']??''));$tiktokAccount=mb_strtolower(ltrim($tiktokAccountRaw,'@'));$urlRaw=trim((string)($_POST['tiktok_profile_url']??''));$url=$urlRaw;$answers=is_array($_POST['answers']??null)?$_POST['answers']:[];$privacyConsent=(string)($_POST['privacy_consent']??'')==='1';$ageConfirmation=(string)($_POST['age_confirmation']??'')==='1';$ip=clientIp();$deviceHash=deviceHash();$riskScore=0;$riskReasons=[];
+$errors=[];$name=mb_strtoupper(trim((string)($_POST['name']??'')),'UTF-8');$nameNormalized=mb_strtoupper(preg_replace('/\s+/u',' ',$name)??$name,'UTF-8');$waRaw=trim((string)($_POST['whatsapp']??''));$wa=normalizeWhatsapp($waRaw);$tiktokAccountRaw=trim((string)($_POST['tiktok_account']??''));$tiktokAccount=mb_strtolower(ltrim($tiktokAccountRaw,'@'));$urlRaw=trim((string)($_POST['tiktok_profile_url']??''));$url=$urlRaw;$answers=is_array($_POST['answers']??null)?$_POST['answers']:[];$privacyConsent=(string)($_POST['privacy_consent']??'')==='1';$ageConfirmation=(string)($_POST['age_confirmation']??'')==='1';$ip=clientIp();$deviceHash=deviceHash();$riskScore=0;$riskReasons=[];
 $_SESSION['old']=['name'=>$name,'whatsapp'=>$waRaw,'tiktok_account'=>$tiktokAccountRaw,'tiktok_profile_url'=>$urlRaw,'answers'=>$answers,'privacy_consent'=>$privacyConsent,'age_confirmation'=>$ageConfirmation];
 if(!verifyCsrf((string)($_POST['csrf_token']??'')))$errors[]='Sesi formulir tidak valid. Muat ulang halaman.';
 if(trim((string)($_POST['website']??''))!=='')$errors[]='Permintaan terdeteksi sebagai spam.';
@@ -25,14 +25,18 @@ if($name!==''&&!preg_match("/^[\\p{L}][\\p{L} .'-]*[\\p{L}.]$/u",$name))$errors[
 if(preg_match('/(.)\\1{4,}/iu',$name)||preg_match('/^(test|testing|asdf|qwerty|admin|user|nama|anonymous|anonim)$/iu',$nameNormalized))$errors[]='Nama terdeteksi tidak wajar. Masukkan nama asli.';
 if(!isValidWhatsapp($wa))$errors[]='Nomor WhatsApp Indonesia tidak valid atau terdeteksi sebagai nomor palsu.';
 if($tiktokAccount===''||mb_strlen($tiktokAccount)>50||!preg_match('/^[a-z0-9._]{2,50}$/',$tiktokAccount))$errors[]='Akun TikTok / username TikTok tidak valid. Gunakan huruf, angka, titik, atau garis bawah.';
-// Izinkan peserta menempel username pada kolom Link Profile; sistem mengubahnya menjadi URL profil.
+// Terima link profil dengan atau tanpa protokol, lalu simpan dalam format HTTPS.
 if($url!==''&&!preg_match('~^https?://~i',$url)){
-    $profileUsername=mb_strtolower(ltrim($url,'@'));
-    if(preg_match('/^[a-z0-9._]{2,50}$/',$profileUsername))$url='https://www.tiktok.com/@'.$profileUsername;
+    if(preg_match('~^(?:www\.|m\.)?tiktok\.com/@[a-z0-9._]{2,50}/?$~i',$url)){
+        $url='https://'.$url;
+    }else{
+        $profileUsername=mb_strtolower(ltrim($url,'@'));
+        if(preg_match('/^[a-z0-9._]{2,50}$/',$profileUsername))$url='https://www.tiktok.com/@'.$profileUsername;
+    }
 }
 $urlHost=strtolower((string)parse_url($url,PHP_URL_HOST));
 $urlPath=(string)parse_url($url,PHP_URL_PATH);
-if(!filter_var($url,FILTER_VALIDATE_URL)||!in_array($urlHost,['tiktok.com','www.tiktok.com','m.tiktok.com'],true)||!preg_match('~^/@[A-Za-z0-9._]{2,50}/?$~',$urlPath))$errors[]='Link Profile tidak valid. Gunakan tautan profil seperti https://www.tiktok.com/@username, bukan tautan video.';
+if(!filter_var($url,FILTER_VALIDATE_URL)||!in_array($urlHost,['tiktok.com','www.tiktok.com','m.tiktok.com'],true)||!preg_match('~^/@[A-Za-z0-9._]{2,50}/?$~',$urlPath))$errors[]='Link Profile TikTok tidak valid. Gunakan tautan seperti tiktok.com/@username atau https://www.tiktok.com/@username, bukan tautan video.';
 $profilePathUsername=mb_strtolower(ltrim(trim($urlPath,'/'),'@'));
 if($tiktokAccount!==''&&$profilePathUsername!==''&&!hash_equals($tiktokAccount,$profilePathUsername))$errors[]='Username TikTok harus sama dengan username pada Link Profile.';
 $age=formAge((string)($_POST['form_proof']??''));

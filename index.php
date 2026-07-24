@@ -131,7 +131,7 @@ unset($_SESSION['errors'], $_SESSION['old']);
             <div class="grid">
                 <div class="field">
                     <label for="name">Nama lengkap</label>
-                    <input type="text" id="name" name="name" maxlength="100" required value="<?= e($old['name'] ?? '') ?>">
+                    <input type="text" id="name" name="name" class="uppercase-input" maxlength="100" required value="<?= e(mb_strtoupper((string)($old['name'] ?? ''), 'UTF-8')) ?>" autocapitalize="characters">
                 </div>
                 <div class="field">
                     <label for="whatsapp">Nomor WhatsApp</label>
@@ -143,41 +143,25 @@ unset($_SESSION['errors'], $_SESSION['old']);
                 <div class="field">
                     <label for="tiktok_account">Akun TikTok / Username TikTok</label>
                     <input type="text" id="tiktok_account" name="tiktok_account" maxlength="50" placeholder="Contoh: affan.balap" required value="<?= e($old['tiktok_account'] ?? '') ?>" autocomplete="off" autocapitalize="none" spellcheck="false">
-                    <small>Masukkan username yang tampil setelah tanda <b>@</b>. Kolom link akan terisi otomatis.</small>
-                    <details class="input-guide">
-                        <summary>Cara melihat username TikTok</summary>
-                        <ol>
-                            <li>Buka aplikasi TikTok, lalu ketuk <b>Profil</b> di bagian bawah.</li>
-                            <li>Lihat nama pengguna yang diawali tanda <b>@</b> pada halaman profil.</li>
-                            <li>Contoh <b>@affan.balap</b>; isi username tanpa tanda <b>@</b>.</li>
-                            <li>Jangan gunakan Nama/Nickname karena berbeda dengan Username.</li>
-                        </ol>
-                    </details>
+                    <small>Masukkan username yang tampil setelah tanda <b>@</b>.</small>
+                    <button type="button" class="input-guide-button" data-guide="username"><i class="fa-solid fa-circle-question" aria-hidden="true"></i> Lihat panduan username TikTok</button>
                 </div>
                 <div class="field">
-                    <label for="tiktok_profile_url">Link Profile</label>
-                    <input type="text" inputmode="url" id="tiktok_profile_url" name="tiktok_profile_url" maxlength="500" placeholder="https://www.tiktok.com/@username" required value="<?= e($old['tiktok_profile_url'] ?? '') ?>" autocapitalize="none" spellcheck="false">
-                    <small>Tempel link profil TikTok. Jika username sudah diisi, link dibuat otomatis.</small>
-                    <details class="input-guide">
-                        <summary>Cara menyalin link profil TikTok</summary>
-                        <ol>
-                            <li>Buka aplikasi TikTok, lalu ketuk <b>Profil</b> di bagian bawah.</li>
-                            <li>Di halaman profil, ketuk tombol <b>Bagikan profil</b>.</li>
-                            <li>Pilih <b>Salin tautan</b>, lalu kembali ke formulir dan tempel link tersebut.</li>
-                            <li>Link yang benar berbentuk <b>tiktok.com/@username</b>, bukan link video.</li>
-                        </ol>
-                    </details>
+                    <label for="tiktok_profile_url">Link Profile TikTok</label>
+                    <input type="text" inputmode="url" id="tiktok_profile_url" name="tiktok_profile_url" maxlength="500" placeholder="tiktok.com/@username" required value="<?= e($old['tiktok_profile_url'] ?? '') ?>" autocapitalize="none" spellcheck="false">
+                    <small>Boleh menggunakan link dengan atau tanpa <b>https://</b> dan harus sesuai dengan username.</small>
+                    <button type="button" class="input-guide-button" data-guide="profile-link"><i class="fa-solid fa-circle-question" aria-hidden="true"></i> Lihat panduan link profil TikTok</button>
                 </div>
             </div>
 
             <div class="grid">
                 <div class="field">
-                    <label for="subscriber_photo">Foto Profile TikTok</label>
+                    <label for="subscriber_photo">Screenshoot Profile TikTok</label>
                     <input type="file" id="subscriber_photo" name="subscriber_photo" accept="image/jpeg,image/png,image/webp" required>
                     <small>Screenshot profile akun TikTok peserta. Maksimal 5 MB. Format JPG, PNG, atau WEBP.</small>
                 </div>
                 <div class="field">
-                    <label for="comment_photo">Foto bukti komentar TikTok</label>
+                    <label for="comment_photo">Screenshoot bukti komentar TikTok</label>
                     <input type="file" id="comment_photo" name="comment_photo" accept="image/jpeg,image/png,image/webp" required>
                     <small>Maksimal 5 MB. Format JPG, PNG, atau WEBP.</small>
                 </div>
@@ -273,6 +257,20 @@ unset($_SESSION['errors'], $_SESSION['old']);
     </div>
 </div>
 
+<div class="modal guide-modal" id="guideModal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="guideModalTitle">
+    <div class="modal-card guide-modal-card">
+        <div class="modal-header">
+            <h2 id="guideModalTitle">Panduan TikTok</h2>
+            <button type="button" class="modal-close" id="closeGuideModal" aria-label="Tutup panduan">×</button>
+        </div>
+        <div class="modal-body guide-modal-body">
+            <img id="guideModalImage" src="" alt="" width="600" height="1334">
+            <ol id="guideModalSteps"></ol>
+            <p class="guide-version-note">Tampilan dapat sedikit berbeda menurut versi aplikasi dan jenis perangkat.</p>
+        </div>
+    </div>
+</div>
+
 <div class="modal sponsor-modal" id="sponsorModal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sponsorModalTitle">
     <div class="modal-card sponsor-modal-card">
         <div class="modal-header">
@@ -284,6 +282,84 @@ unset($_SESSION['errors'], $_SESSION['old']);
         </div>
     </div>
 </div>
+<script nonce="<?=cspNonce()?>">
+(function () {
+    const modal = document.getElementById('guideModal');
+    const image = document.getElementById('guideModalImage');
+    const title = document.getElementById('guideModalTitle');
+    const steps = document.getElementById('guideModalSteps');
+    const closeButton = document.getElementById('closeGuideModal');
+    if (!modal || !image || !title || !steps || !closeButton) return;
+
+    const guides = {
+        username: {
+            title: 'Cara melihat username TikTok',
+            image: 'assets/guide-tiktok-username.webp',
+            alt: 'Contoh lokasi username pada tampilan profil TikTok terbaru',
+            width: 600,
+            height: 1334,
+            steps: [
+                'Buka aplikasi TikTok, lalu ketuk Profil di bagian bawah.',
+                'Temukan username yang diawali tanda @ tepat di bawah nama akun pada sisi kiri.',
+                'Masukkan username ke formulir tanpa tanda @.',
+                'Jangan menggunakan nama tampilan karena berbeda dengan username.'
+            ]
+        },
+        'profile-link': {
+            title: 'Cara menyalin link profil TikTok',
+            image: 'assets/guide-tiktok-profile-link.webp',
+            alt: 'Contoh tombol Bagikan profil dan Salin tautan pada tampilan TikTok terbaru',
+            width: 700,
+            height: 1475,
+            steps: [
+                'Buka aplikasi TikTok, lalu ketuk Profil di bagian bawah.',
+                'Ketuk ikon menu tiga garis di sudut kanan atas halaman profil.',
+                'Pada menu samping, pilih Pengaturan dan privasi.',
+                'Gulir ke bagian Akun, kemudian pilih Bagikan profil.',
+                'Pada panel Kirim ke, tekan Salin Tautan.',
+                'Kembali ke formulir lalu tempel link pada kolom Link Profile TikTok.'
+            ]
+        }
+    };
+
+    function closeGuide() {
+        modal.hidden = true;
+        modal.setAttribute('aria-hidden', 'true');
+        image.removeAttribute('src');
+        document.body.classList.remove('modal-open');
+    }
+
+    document.querySelectorAll('[data-guide]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            const guide = guides[button.dataset.guide];
+            if (!guide) return;
+            title.textContent = guide.title;
+            image.src = guide.image;
+            image.alt = guide.alt;
+            image.width = guide.width;
+            image.height = guide.height;
+            steps.replaceChildren();
+            guide.steps.forEach(function (text) {
+                const item = document.createElement('li');
+                item.textContent = text;
+                steps.appendChild(item);
+            });
+            modal.hidden = false;
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('modal-open');
+            closeButton.focus();
+        });
+    });
+    closeButton.addEventListener('click', closeGuide);
+    modal.addEventListener('click', function (event) {
+        if (event.target === modal) closeGuide();
+    });
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && !modal.hidden) closeGuide();
+    });
+})();
+</script>
+
 <script nonce="<?=cspNonce()?>">
 (function () {
     var modal = document.getElementById('privacyModal');
@@ -363,44 +439,6 @@ unset($_SESSION['errors'], $_SESSION['old']);
 
     let submitting = false;
     const originalText = button.textContent;
-    const accountInput = document.getElementById('tiktok_account');
-    const profileInput = document.getElementById('tiktok_profile_url');
-    let syncingTikTok = false;
-
-    function usernameFromProfile(value) {
-        try {
-            const url = new URL(value.trim());
-            if (!['tiktok.com', 'www.tiktok.com', 'm.tiktok.com'].includes(url.hostname.toLowerCase())) return '';
-            const match = url.pathname.match(/^\/@([a-z0-9._]{2,50})\/?$/i);
-            return match ? match[1].toLowerCase() : '';
-        } catch (error) { return ''; }
-    }
-    function normalizeUsername(value) {
-        return value.trim().replace(/^@+/, '').toLowerCase().replace(/[^a-z0-9._]/g, '').slice(0, 50);
-    }
-    if (accountInput && profileInput) {
-        accountInput.addEventListener('input', function () {
-            if (syncingTikTok) return;
-            const username = normalizeUsername(accountInput.value);
-            if (accountInput.value !== username) accountInput.value = username;
-            if (username) profileInput.value = 'https://www.tiktok.com/@' + username;
-        });
-        profileInput.addEventListener('input', function () {
-            if (syncingTikTok) return;
-            const username = usernameFromProfile(profileInput.value);
-            if (username) {
-                syncingTikTok = true;
-                accountInput.value = username;
-                profileInput.value = 'https://www.tiktok.com/@' + username;
-                syncingTikTok = false;
-            }
-        });
-        profileInput.addEventListener('paste', function () {
-            setTimeout(function () { profileInput.dispatchEvent(new Event('input', {bubbles: true})); }, 0);
-        });
-        if (!accountInput.value && profileInput.value) profileInput.dispatchEvent(new Event('input', {bubbles: true}));
-    }
-
     window.addEventListener('pageshow', function () {
         submitting = false;
         button.disabled = false;
@@ -501,6 +539,21 @@ unset($_SESSION['errors'], $_SESSION['old']);
             alert('Foto gagal diproses. Silakan coba kembali atau gunakan gambar dengan ukuran lebih kecil.');
         }
     });
+})();
+</script>
+
+<script nonce="<?=cspNonce()?>">
+(function () {
+    const nameInput = document.getElementById('name');
+    if (!nameInput) return;
+    function uppercaseName() {
+        const start = nameInput.selectionStart;
+        const end = nameInput.selectionEnd;
+        nameInput.value = nameInput.value.toLocaleUpperCase('id-ID');
+        if (start !== null && end !== null) nameInput.setSelectionRange(start, end);
+    }
+    nameInput.addEventListener('input', uppercaseName);
+    uppercaseName();
 })();
 </script>
 

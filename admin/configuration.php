@@ -2,6 +2,23 @@
 require dirname(__DIR__).'/config.php';
 ob_start(static function (string $html): string {
     $html = preg_replace('/\s+onsubmit="return confirm\(\'([^\']*)\'\);"/', ' data-confirm="$1"', $html) ?? $html;
+    $html = str_replace(
+        [
+            'Struktur database pendaftaran',
+            'Database sudah menggunakan struktur terbaru dan siap menerima persetujuan data peserta.',
+            'Pembaruan diperlukan. Kolom belum tersedia:',
+            'Perbarui Database',
+            'Periksa Database',
+        ],
+        [
+            'Migrasi Database Penuh',
+            'Seluruh tabel, kolom, indeks, konfigurasi, dan data dasar aplikasi sudah sinkron. Tidak ada data target yang dihapus atau ditimpa.',
+            'Rencana migrasi additive-only (tanpa DROP, TRUNCATE, DELETE, atau penimpaan data):',
+            'Jalankan Migrasi Penuh',
+            'Periksa & Sinkronkan',
+        ],
+        $html
+    );
     $script = '<script nonce="'.cspNonce().'">document.querySelectorAll("form[data-confirm]").forEach(function(form){form.addEventListener("submit",function(event){if(!window.confirm(form.dataset.confirm||"Lanjutkan?"))event.preventDefault();});});</script>';
     return str_replace('</body>', $script.'</body>', $html);
 });
@@ -36,12 +53,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 setDailyParticipantQuota($quota);
                 rotateCsrf();
                 $message = 'Kuota peserta harian berhasil diperbarui menjadi '.$quota.' peserta.';
-            } elseif ($action === 'upgrade_submission_schema') {
-                $addedColumns = upgradeParticipantSubmissionSchema();
+            } elseif (in_array($action, ['run_full_migration','upgrade_submission_schema'], true)) {
+                $migrationResult = runFullDatabaseMigration();
                 rotateCsrf();
-                $message = $addedColumns
-                    ? 'Database berhasil diperbarui. Kolom yang ditambahkan: '.implode(', ', $addedColumns).'.'
-                    : 'Struktur database pendaftaran sudah menggunakan versi terbaru.';
+                $message = $migrationResult['applied']
+                    ? 'Migrasi penuh berhasil. '.count($migrationResult['applied']).' pembaruan additive diterapkan tanpa menghapus data.'
+                    : 'Database sudah menggunakan struktur terbaru. Tidak ada perubahan data.';
             } elseif ($action === 'reset_devices') {
                 $pdo->beginTransaction();
                 $pdo->exec('DELETE FROM participant_identity_locks WHERE identity_type=\'device\'');
@@ -73,7 +90,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } catch (Throwable $e) {
             if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) { $pdo->rollBack(); try { $pdo->exec('SET FOREIGN_KEY_CHECKS=1'); } catch (Throwable $ignored) {} }
-            $error = $e instanceof InvalidArgumentException ? $e->getMessage() : 'Operasi gagal. Periksa migration database V7 dan izin folder upload.';
+            error_log('[quiz_tiktok][admin-config] '.$e->getMessage());
+            $error = $e instanceof InvalidArgumentException ? $e->getMessage() : 'Operasi gagal. Tidak ada data yang dihapus. Periksa izin ALTER/CREATE database dan log server.';
         }
     }
 }
@@ -81,5 +99,8 @@ $schedule = quizScheduleSettings();
 $scheduleStartValue = $schedule['start_at'] !== '' ? date('Y-m-d\TH:i', strtotime($schedule['start_at'])) : '';
 $scheduleEndValue = $schedule['end_at'] !== '' ? date('Y-m-d\TH:i', strtotime($schedule['end_at'])) : '';
 $modeLabels = ['auto'=>'Otomatis','forced_open'=>'Paksa dibuka','forced_closed'=>'Paksa ditutup'];
-$missingSubmissionColumns = participantSubmissionMissingColumns();
+$migrationPlan = databaseMigrationPlan();
+$migrationHistory = databaseMigrationHistory();
+$missingSubmissionColumns = array_column($migrationPlan, 'label');
+if (participantUppercaseMigrationPending()) $missingSubmissionColumns[] = 'Ubah nama peserta lama menjadi uppercase';
 ?><!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Konfigurasi Admin - Affan Elektronik</title><link rel="icon" href="../assets/favicon.png"><link rel="stylesheet" href="../assets/style.css"></head><body><div class="container"><div class="card"><div class="admin-brand"><img src="../assets/affan-logo.png" alt="Affan Elektronik"><span>Panel Kuis Affan Elektronik</span></div><p><a href="index.php"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Kembali ke dashboard</a></p><h1>Konfigurasi</h1><div class="schedule-config"><div class="schedule-config-heading"><div><h2>Periode Kuis</h2><p class="muted">Atur jadwal otomatis dalam zona waktu WIB. Mode saat ini: <strong><?=e($modeLabels[$schedule['mode']]??'Otomatis')?></strong>.</p></div><span class="status-badge <?=quizIsOpen()?'open':'closed'?>"><?=quizIsOpen()?'BERJALAN':'TIDAK BERJALAN'?></span></div><form method="post" class="schedule-form"><input type="hidden" name="csrf_token" value="<?=e(csrfToken())?>"><input type="hidden" name="action" value="set_schedule"><div class="field"><label>Mulai</label><input type="datetime-local" name="quiz_start_at" value="<?=e($scheduleStartValue)?>" required></div><div class="field"><label>Berakhir</label><input type="datetime-local" name="quiz_end_at" value="<?=e($scheduleEndValue)?>" required></div><button type="submit">Simpan & Aktifkan Otomatis</button></form><form method="post" class="auto-mode-form"><input type="hidden" name="csrf_token" value="<?=e(csrfToken())?>"><input type="hidden" name="action" value="set_auto_mode"><button type="submit" class="secondary-button">Gunakan Jadwal Otomatis</button></form></div><div class="session-box"><div><h2>Struktur database pendaftaran</h2><?php if(!$missingSubmissionColumns):?><p class="muted">Database sudah menggunakan struktur terbaru dan siap menerima persetujuan data peserta.</p><?php else:?><p class="muted">Pembaruan diperlukan. Kolom belum tersedia: <strong><?=e(implode(', ',$missingSubmissionColumns))?></strong>.</p><?php endif;?></div><form class="configuration-action-form" method="post"><input type="hidden" name="csrf_token" value="<?=e(csrfToken())?>"><input type="hidden" name="action" value="upgrade_submission_schema"><button type="submit" class="<?=$missingSubmissionColumns?'':'secondary-button'?>"><i class="fa-solid fa-database" aria-hidden="true"></i> <?=$missingSubmissionColumns?'Perbarui Database':'Periksa Database'?></button></form></div><div class="session-box"><div><h2>Kuota peserta harian</h2><p class="muted">Batas peserta baru yang dapat tersimpan setiap hari. Default: 200 peserta.</p></div><form class="configuration-action-form" method="post"><input type="hidden" name="csrf_token" value="<?=e(csrfToken())?>"><input type="hidden" name="action" value="set_quota"><input type="number" name="daily_quota" min="1" max="100000" value="<?=dailyParticipantQuota()?>" required><button type="submit">Simpan Kuota</button></form></div><?php if($message):?><div class="success-alert"><?=e($message)?></div><?php endif;?><?php if($error):?><div class="alert"><?=e($error)?></div><?php endif;?><div class="session-box"><div><h2>Reset perangkat</h2><p class="muted">Menghapus riwayat percobaan dan membebaskan kembali pembatas perangkat. Data peserta yang sudah tersimpan tetap ada.</p></div><form class="configuration-action-form" method="post" onsubmit="return confirm('Reset pembatas semua perangkat dan riwayat percobaan?');"><input type="hidden" name="csrf_token" value="<?=e(csrfToken())?>"><input type="hidden" name="action" value="reset_devices"><button type="submit">Reset Perangkat</button></form></div><div class="session-box"><div><h2>Hapus seluruh data percobaan</h2><p class="muted">Menghapus peserta, jawaban, nomor undian, riwayat percobaan, identity lock, serta semua foto upload. Nomor undian kembali ke UND-000001.</p></div><form class="configuration-action-form" method="post" onsubmit="return confirm('Tindakan ini tidak dapat dibatalkan. Lanjutkan?');"><input type="hidden" name="csrf_token" value="<?=e(csrfToken())?>"><input type="hidden" name="action" value="clear_data"><input name="confirm_text" placeholder="Ketik HAPUS SEMUA DATA" autocomplete="off" required><button type="submit" class="danger-button">Hapus Semua Data</button></form></div></div></div></body></html>
