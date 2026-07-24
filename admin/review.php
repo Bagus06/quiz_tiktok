@@ -27,11 +27,11 @@ function aiWritingSuggestion(string $answer): array {
     $length = mb_strlen($text);
     $words = preg_split('/\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
     $wordCount = count($words);
-    if ($length < 45 || $wordCount < 8) {
-        return ['level'=>'neutral','label'=>'Teks terlalu singkat untuk dianalisis','score'=>0,'reasons'=>['Diperlukan jawaban yang lebih panjang agar pola penulisan dapat dinilai dengan wajar.']];
-    }
-
-    $score = 0;
+    $isShortAnswer = $length < 45 || $wordCount < 8;
+    // Jawaban pendek tetap dianalisis. Skor dasar menunjukkan ketidakpastian,
+    // bukan bukti AI, sehingga hanya jawaban kosong/gambar yang bernilai 0.
+    $score = $wordCount >= 2 ? 10 : 8;
+    if ($wordCount >= 5) $score += 5;
     $reasons = [];
     $independentSignals = 0;
     $sentences = preg_split('/(?<=[.!?])\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
@@ -40,6 +40,19 @@ function aiWritingSuggestion(string $answer): array {
     // Panjang hanya menjadi sinyal pendukung dan tidak cukup untuk menandai AI.
     if ($length >= 160) { $score += 12; $reasons[] = 'Jawaban lebih panjang dari kebanyakan jawaban kuis singkat.'; }
     if ($length >= 350) $score += 6;
+
+    $formalWordCount = preg_match_all('/\b(?:merupakan|berdasarkan|dengan|karena|sehingga|dapat|secara|yaitu|tersebut|memiliki|menunjukkan|disimpulkan)\b/iu', $text);
+    if ($isShortAnswer && $formalWordCount >= 2) {
+        $score += min(18, 10 + (($formalWordCount - 2) * 4));
+        $independentSignals++;
+        $reasons[] = 'Jawaban singkat memiliki kepadatan kata formal yang cukup tinggi.';
+    }
+
+    if ($isShortAnswer && $wordCount >= 6 && preg_match('/[.!?]$/u', $text)) {
+        $score += 8;
+        $independentSignals++;
+        $reasons[] = 'Jawaban singkat ditulis sebagai kalimat lengkap yang sangat rapi.';
+    }
 
     $transitionCount = preg_match_all('/\b(secara umum|dengan demikian|oleh karena itu|dapat disimpulkan|berdasarkan (?:informasi|penjelasan|uraian)|pada dasarnya|selain itu|lebih lanjut|di sisi lain|sebagai kesimpulan)\b/iu', $text);
     if ($transitionCount >= 1) {
@@ -89,7 +102,11 @@ function aiWritingSuggestion(string $answer): array {
     // Satu sinyal tetap dapat memicu pemeriksaan, tetapi tidak boleh langsung dianggap kuat.
     if ($independentSignals < 2) $score = min($score, 44);
     $score = min(100, $score);
-    if (!$reasons) $reasons[] = 'Tidak ditemukan pola bahasa generatif yang kuat.';
+    if (!$reasons) {
+        $reasons[] = $isShortAnswer
+            ? 'Jawaban tetap dianalisis, tetapi teks yang singkat membatasi kekuatan indikator.'
+            : 'Tidak ditemukan pola bahasa generatif yang kuat.';
+    }
     if ($score >= 55) return ['level'=>'high','label'=>'Indikasi AI cukup kuat','score'=>$score,'reasons'=>$reasons];
     if ($score >= 30) return ['level'=>'medium','label'=>'Perlu pemeriksaan manual','score'=>$score,'reasons'=>$reasons];
     return ['level'=>'low','label'=>'Indikasi AI rendah','score'=>$score,'reasons'=>$reasons];
