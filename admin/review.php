@@ -24,19 +24,75 @@ function normalizeReviewedAnswer(string $answer): string {
 function aiWritingSuggestion(string $answer): array {
     $text = trim($answer);
     if ($text === '' || $text[0] === '[') return ['level'=>'neutral','label'=>'Tidak dianalisis','score'=>0,'reasons'=>['Jawaban berupa gambar atau tidak memiliki teks yang dapat dianalisis.']];
+    $length = mb_strlen($text);
+    $words = preg_split('/\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    $wordCount = count($words);
+    if ($length < 45 || $wordCount < 8) {
+        return ['level'=>'neutral','label'=>'Teks terlalu singkat untuk dianalisis','score'=>0,'reasons'=>['Diperlukan jawaban yang lebih panjang agar pola penulisan dapat dinilai dengan wajar.']];
+    }
+
     $score = 0;
     $reasons = [];
-    $length = mb_strlen($text);
-    $sentences = preg_match_all('/[.!?]+(?:\s|$)/u', $text);
-    if ($length >= 180) { $score += 25; $reasons[] = 'Jawaban relatif panjang untuk format kuis.'; }
-    if ($sentences >= 4) { $score += 20; $reasons[] = 'Menggunakan banyak kalimat yang tersusun formal.'; }
-    if (preg_match('/\b(secara umum|dengan demikian|oleh karena itu|dapat disimpulkan|berdasarkan informasi|penting untuk|pada dasarnya)\b/iu', $text)) { $score += 25; $reasons[] = 'Memuat frasa transisi yang sering muncul pada teks generatif.'; }
-    if (preg_match('/(?:^|\n)\s*(?:[-*•]|\d+[.)])\s+/u', $text)) { $score += 20; $reasons[] = 'Jawaban disusun sebagai daftar yang sangat terstruktur.'; }
-    if ($length >= 100 && preg_match('/\b(karena|sehingga|namun|selain itu|serta)\b/iu', $text)) { $score += 10; $reasons[] = 'Gaya penjelasan terlihat lebih elaboratif.'; }
+    $independentSignals = 0;
+    $sentences = preg_split('/(?<=[.!?])\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    $sentenceCount = count($sentences);
+
+    // Panjang hanya menjadi sinyal pendukung dan tidak cukup untuk menandai AI.
+    if ($length >= 160) { $score += 12; $reasons[] = 'Jawaban lebih panjang dari kebanyakan jawaban kuis singkat.'; }
+    if ($length >= 350) $score += 6;
+
+    $transitionCount = preg_match_all('/\b(secara umum|dengan demikian|oleh karena itu|dapat disimpulkan|berdasarkan (?:informasi|penjelasan|uraian)|pada dasarnya|selain itu|lebih lanjut|di sisi lain|sebagai kesimpulan)\b/iu', $text);
+    if ($transitionCount >= 1) {
+        $score += min(26, 14 + (($transitionCount - 1) * 4));
+        $independentSignals++;
+        $reasons[] = $transitionCount >= 2
+            ? 'Menggunakan beberapa frasa transisi formal secara berulang.'
+            : 'Menggunakan frasa transisi formal yang umum pada teks generatif.';
+    }
+
+    $genericFramingCount = preg_match_all('/\b(penting untuk (?:dicatat|dipahami|diketahui)|perlu (?:dicatat|dipahami|diketahui)|hal ini (?:menunjukkan|mencerminkan|menggambarkan)|secara keseluruhan|jawaban ini dapat|dalam konteks ini)\b/iu', $text);
+    if ($genericFramingCount >= 1) {
+        $score += min(22, 14 + (($genericFramingCount - 1) * 4));
+        $independentSignals++;
+        $reasons[] = 'Memuat pola pembuka atau kesimpulan yang bersifat generik.';
+    }
+
+    $listItems = preg_match_all('/(?:^|\n)\s*(?:[-*•]|\d+[.)])\s+\S+/u', $text);
+    if ($listItems >= 2) {
+        $score += 16;
+        $independentSignals++;
+        $reasons[] = 'Jawaban disusun sebagai daftar dengan struktur yang konsisten.';
+    }
+
+    if (preg_match('/\b(?:pertama|kedua|ketiga)\b.*\b(?:kesimpulan|dapat disimpulkan|secara keseluruhan)\b/isu', $text)) {
+        $score += 18;
+        $independentSignals++;
+        $reasons[] = 'Memakai pola uraian bertahap yang ditutup dengan kesimpulan.';
+    }
+
+    $connectorCount = preg_match_all('/\b(karena|sehingga|namun|selain itu|sementara itu|oleh sebab itu|dengan demikian|serta)\b/iu', $text);
+    if ($sentenceCount >= 3 && $connectorCount >= 3) {
+        $averageWords = $wordCount / max(1, $sentenceCount);
+        if ($averageWords >= 10 && $averageWords <= 35) {
+            $score += 14;
+            $independentSignals++;
+            $reasons[] = 'Banyak kalimat memiliki susunan dan penghubung yang sangat konsisten.';
+        }
+    }
+
+    if (preg_match('/\b(sebagai (?:sebuah )?AI|sebagai model bahasa|saya tidak memiliki akses|batas pengetahuan saya|saya tidak dapat memverifikasi)\b/iu', $text)) {
+        $score += 80;
+        $independentSignals += 2;
+        $reasons[] = 'Terdapat ungkapan yang secara langsung merujuk pada respons model AI.';
+    }
+
+    // Satu sinyal tetap dapat memicu pemeriksaan, tetapi tidak boleh langsung dianggap kuat.
+    if ($independentSignals < 2) $score = min($score, 44);
+    $score = min(100, $score);
     if (!$reasons) $reasons[] = 'Tidak ditemukan pola bahasa generatif yang kuat.';
-    if ($score >= 45) return ['level'=>'high','label'=>'Indikasi AI cukup kuat','score'=>min(100,$score),'reasons'=>$reasons];
-    if ($score >= 25) return ['level'=>'medium','label'=>'Perlu pemeriksaan manual','score'=>min(100,$score),'reasons'=>$reasons];
-    return ['level'=>'low','label'=>'Indikasi AI rendah','score'=>min(100,$score),'reasons'=>$reasons];
+    if ($score >= 55) return ['level'=>'high','label'=>'Indikasi AI cukup kuat','score'=>$score,'reasons'=>$reasons];
+    if ($score >= 30) return ['level'=>'medium','label'=>'Perlu pemeriksaan manual','score'=>$score,'reasons'=>$reasons];
+    return ['level'=>'low','label'=>'Indikasi AI rendah','score'=>$score,'reasons'=>$reasons];
 }
 
 $historyStmt = db()->prepare("SELECT pa.question_id,pa.answer_text FROM participant_answers pa JOIN participants p ON p.id=pa.participant_id WHERE pa.is_correct=1 AND p.status='reviewed' AND pa.participant_id<>? AND pa.answer_text<>''");
