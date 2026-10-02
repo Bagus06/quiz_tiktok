@@ -1,5 +1,13 @@
 <?php
-require dirname(__DIR__).'/config.php';requireAdmin();if(!empty($_SESSION['must_change_password'])){header('Location: password.php');exit;}
+require dirname(__DIR__).'/config.php';
+ob_start(static function (string $html): string {
+    return str_replace(
+        '<a class="small-button" href="configuration.php">Konfigurasi</a>',
+        '<a class="small-button" href="drawing.php">Pengundian</a> <a class="small-button" href="configuration.php">Konfigurasi</a>',
+        $html
+    );
+});
+requireAdmin();if(!empty($_SESSION['must_change_password'])){header('Location: password.php');exit;}
 $message='';if($_SERVER['REQUEST_METHOD']==='POST'){if(!verifyCsrf((string)($_POST['csrf_token']??'')))$message='Sesi tidak valid.';elseif(isset($_POST['quiz_state'])){setQuizOpen($_POST['quiz_state']==='open');rotateCsrf();$message=$_POST['quiz_state']==='open'?'Sesi kuis dibuka.':'Sesi kuis ditutup.';}}
 $perPage=15;
 $pSearch=trim((string)($_GET['participant_q']??''));$pPage=max(1,(int)($_GET['participant_page']??1));$pWhere='';$pParams=[];if($pSearch!==''){$pWhere=' WHERE name LIKE ? OR whatsapp LIKE ? OR tiktok_account LIKE ? OR tiktok_profile_url LIKE ? OR token LIKE ? OR status LIKE ? OR risk_status LIKE ?';$like='%'.$pSearch.'%';$pParams=[$like,$like,$like,$like,$like,$like,$like];}$pCount=db()->prepare('SELECT COUNT(*) FROM participants'.$pWhere);$pCount->execute($pParams);$pTotal=(int)$pCount->fetchColumn();$pPages=max(1,(int)ceil($pTotal/$perPage));$pPage=min($pPage,$pPages);$pOffset=($pPage-1)*$perPage;$pSql="SELECT id,name,whatsapp,tiktok_account,tiktok_profile_url,token,status,correct_count,risk_status,risk_score,risk_reasons,submitted_at FROM participants{$pWhere} ORDER BY CASE WHEN risk_status='flagged' THEN 0 ELSE 1 END ASC, CASE WHEN status='pending' THEN 0 ELSE 1 END ASC, submitted_at ASC, id ASC LIMIT {$perPage} OFFSET {$pOffset}";$pStmt=db()->prepare($pSql);$pStmt->execute($pParams);$rows=$pStmt->fetchAll();

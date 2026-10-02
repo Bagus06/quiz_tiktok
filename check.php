@@ -5,6 +5,17 @@ $lookup = trim((string)($_GET['lookup'] ?? $_GET['token'] ?? ''));
 if (!$lookupProvided && $lookup === '') $lookup = rememberedParticipantToken() ?? '';
 $participant = null;
 $raffles = [];
+$drawingWinners = [];
+if (migrationTableExists('raffle_winners') && migrationTableExists('raffle_prizes')) {
+    $drawingWinners = db()->query(
+        'SELECT rp.prize_order,rp.prize_name,rn.raffle_number,p.tiktok_account,rw.drawn_at
+         FROM raffle_winners rw
+         JOIN raffle_prizes rp ON rp.id=rw.prize_id
+         JOIN raffle_numbers rn ON rn.id=rw.raffle_number_id
+         JOIN participants p ON p.id=rw.participant_id
+         ORDER BY rp.prize_order,rw.id'
+    )->fetchAll();
+}
 if ($lookup !== '') {
     $tokenCandidate = strtoupper($lookup);
     $whatsappCandidate = normalizeWhatsapp($lookup);
@@ -13,7 +24,10 @@ if ($lookup !== '') {
     $st->execute([$tokenCandidate, $whatsappCandidate, $tiktokCandidate]);
     $participant = $st->fetch();
     if ($participant && $participant['status'] === 'reviewed') {
-        $r = db()->prepare('SELECT raffle_number FROM raffle_numbers WHERE participant_id=? ORDER BY id');
+        $winnerJoin = migrationTableExists('raffle_winners') && migrationTableExists('raffle_prizes');
+        $r = db()->prepare($winnerJoin
+            ? 'SELECT rn.raffle_number,rw.id AS winner_id,rp.prize_name FROM raffle_numbers rn LEFT JOIN raffle_winners rw ON rw.raffle_number_id=rn.id LEFT JOIN raffle_prizes rp ON rp.id=rw.prize_id WHERE rn.participant_id=? ORDER BY rn.id'
+            : 'SELECT raffle_number,NULL AS winner_id,NULL AS prize_name FROM raffle_numbers WHERE participant_id=? ORDER BY id');
         $r->execute([(int)$participant['id']]);
         $raffles = $r->fetchAll();
     }
@@ -57,13 +71,37 @@ if ($lookup !== '') {
                     <h3>Nomor Undian</h3>
                     <?php if ($raffles): ?>
                         <div class="raffles">
-                            <?php foreach ($raffles as $row): ?><span><?=e($row['raffle_number'])?></span><?php endforeach; ?>
+                            <?php foreach ($raffles as $row): ?><span class="<?=$row['winner_id']?'raffle-winning':''?>"><?php if($row['winner_id']):?><i class="fa-solid fa-trophy" aria-hidden="true"></i><?php endif;?><?=e($row['raffle_number'])?><?php if($row['winner_id']):?><small>Menang: <?=e((string)$row['prize_name'])?></small><?php endif;?></span><?php endforeach; ?>
                         </div>
                     <?php else: ?>
                         <p>Belum memperoleh nomor undian.</p>
                     <?php endif; ?>
                 <?php endif; ?>
             </div>
+        <?php endif; ?>
+        <?php if ($drawingWinners): ?>
+            <section class="public-winner-section" aria-labelledby="public-winner-title">
+                <div class="public-winner-heading">
+                    <span class="public-winner-icon"><i class="fa-solid fa-trophy" aria-hidden="true"></i></span>
+                    <div>
+                        <span class="card-label">HASIL PENGUNDIAN</span>
+                        <h2 id="public-winner-title">Daftar Pemenang Undian</h2>
+                        <p>Selamat kepada peserta yang telah mendapatkan hadiah.</p>
+                    </div>
+                </div>
+                <div class="public-winner-list">
+                    <?php foreach ($drawingWinners as $winner): ?>
+                        <article class="public-winner-item">
+                            <span class="public-winner-order"><?= (int)$winner['prize_order'] ?></span>
+                            <div class="public-winner-detail">
+                                <strong><?=e((string)$winner['prize_name'])?></strong>
+                                <span class="public-winning-ticket"><i class="fa-solid fa-ticket" aria-hidden="true"></i> <?=e((string)$winner['raffle_number'])?></span>
+                                <span><i class="fa-brands fa-tiktok" aria-hidden="true"></i> @<?=e(ltrim((string)$winner['tiktok_account'], '@'))?></span>
+                            </div>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+            </section>
         <?php endif; ?>
         <p><a href="index.php">Kembali ke formulir</a></p>
     </div>

@@ -115,6 +115,28 @@ CREATE TABLE IF NOT EXISTS raffle_numbers (
  KEY idx_raffle_participant(participant_id),
  CONSTRAINT fk_raffle_participant FOREIGN KEY(participant_id) REFERENCES participants(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS raffle_prizes (
+ id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ prize_order INT UNSIGNED NOT NULL,
+ prize_name VARCHAR(150) NOT NULL,
+ description VARCHAR(500) NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+ UNIQUE KEY uq_raffle_prize_order(prize_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS raffle_winners (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ prize_id INT UNSIGNED NOT NULL,
+ raffle_number_id BIGINT UNSIGNED NOT NULL,
+ participant_id BIGINT UNSIGNED NOT NULL,
+ drawn_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ UNIQUE KEY uq_raffle_winner_prize(prize_id),
+ UNIQUE KEY uq_raffle_winner_number(raffle_number_id),
+ KEY idx_raffle_winner_participant(participant_id),
+ CONSTRAINT fk_winner_prize FOREIGN KEY(prize_id) REFERENCES raffle_prizes(id) ON DELETE RESTRICT,
+ CONSTRAINT fk_winner_number FOREIGN KEY(raffle_number_id) REFERENCES raffle_numbers(id) ON DELETE RESTRICT,
+ CONSTRAINT fk_winner_participant FOREIGN KEY(participant_id) REFERENCES participants(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS admins (
  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
  username VARCHAR(50) NOT NULL UNIQUE,

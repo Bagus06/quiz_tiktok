@@ -109,6 +109,28 @@ function fullMigrationTableDefinitions(): array {
             KEY idx_raffle_participant(participant_id),
             CONSTRAINT fk_raffle_participant FOREIGN KEY(participant_id) REFERENCES participants(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        'raffle_prizes' => "CREATE TABLE IF NOT EXISTS raffle_prizes (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            prize_order INT UNSIGNED NOT NULL,
+            prize_name VARCHAR(150) NOT NULL,
+            description VARCHAR(500) NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_raffle_prize_order(prize_order)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        'raffle_winners' => "CREATE TABLE IF NOT EXISTS raffle_winners (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            prize_id INT UNSIGNED NOT NULL,
+            raffle_number_id BIGINT UNSIGNED NOT NULL,
+            participant_id BIGINT UNSIGNED NOT NULL,
+            drawn_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_raffle_winner_prize(prize_id),
+            UNIQUE KEY uq_raffle_winner_number(raffle_number_id),
+            KEY idx_raffle_winner_participant(participant_id),
+            CONSTRAINT fk_winner_prize FOREIGN KEY(prize_id) REFERENCES raffle_prizes(id) ON DELETE RESTRICT,
+            CONSTRAINT fk_winner_number FOREIGN KEY(raffle_number_id) REFERENCES raffle_numbers(id) ON DELETE RESTRICT,
+            CONSTRAINT fk_winner_participant FOREIGN KEY(participant_id) REFERENCES participants(id) ON DELETE RESTRICT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
         'admins' => "CREATE TABLE IF NOT EXISTS admins (
             id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             username VARCHAR(50) NOT NULL UNIQUE,
@@ -170,6 +192,8 @@ function fullMigrationColumnDefinitions(): array {
         'participant_answer_images' => ['id'=>'BIGINT UNSIGNED NULL','participant_answer_id'=>'BIGINT UNSIGNED NULL','image_path'=>'VARCHAR(255) NULL','image_hash'=>'CHAR(64) NULL','sort_order'=>'TINYINT UNSIGNED NULL','created_at'=>'TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP'],
         'raffle_sequence' => ['id'=>'TINYINT UNSIGNED NULL','next_number'=>'BIGINT UNSIGNED NOT NULL DEFAULT 1'],
         'raffle_numbers' => ['id'=>'BIGINT UNSIGNED NULL','participant_id'=>'BIGINT UNSIGNED NULL','raffle_number'=>'VARCHAR(40) NULL','created_at'=>'TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP'],
+        'raffle_prizes' => ['id'=>'INT UNSIGNED NULL','prize_order'=>'INT UNSIGNED NULL','prize_name'=>'VARCHAR(150) NULL','description'=>'VARCHAR(500) NULL','created_at'=>'TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP','updated_at'=>'TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP'],
+        'raffle_winners' => ['id'=>'BIGINT UNSIGNED NULL','prize_id'=>'INT UNSIGNED NULL','raffle_number_id'=>'BIGINT UNSIGNED NULL','participant_id'=>'BIGINT UNSIGNED NULL','drawn_at'=>'TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP'],
         'admins' => ['id'=>'INT UNSIGNED NULL','username'=>'VARCHAR(50) NULL','password_hash'=>'VARCHAR(255) NULL','must_change_password'=>'TINYINT(1) NOT NULL DEFAULT 0','created_at'=>'TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP','updated_at'=>'TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP'],
         'submission_attempts' => ['id'=>'BIGINT UNSIGNED NULL','ip_address'=>'VARCHAR(45) NULL','whatsapp'=>'VARCHAR(20) NULL','tiktok_account'=>'VARCHAR(100) NULL','device_hash'=>'CHAR(64) NULL','was_successful'=>'TINYINT(1) NOT NULL DEFAULT 0','attempted_at'=>'TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP'],
         'admin_login_attempts' => ['id'=>'BIGINT UNSIGNED NULL','username'=>'VARCHAR(50) NULL','ip_address'=>'VARCHAR(45) NULL','was_successful'=>'TINYINT(1) NOT NULL DEFAULT 0','attempted_at'=>'TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP'],
@@ -186,6 +210,8 @@ function fullMigrationIndexDefinitions(): array {
         ],
         'participant_answer_images' => ['idx_answer_image_answer'=>'KEY idx_answer_image_answer(participant_answer_id)','idx_answer_image_hash'=>'KEY idx_answer_image_hash(image_hash)'],
         'raffle_numbers' => ['idx_raffle_participant'=>'KEY idx_raffle_participant(participant_id)'],
+        'raffle_prizes' => ['uq_raffle_prize_order'=>'UNIQUE KEY uq_raffle_prize_order(prize_order)'],
+        'raffle_winners' => ['uq_raffle_winner_prize'=>'UNIQUE KEY uq_raffle_winner_prize(prize_id)','uq_raffle_winner_number'=>'UNIQUE KEY uq_raffle_winner_number(raffle_number_id)','idx_raffle_winner_participant'=>'KEY idx_raffle_winner_participant(participant_id)'],
         'submission_attempts' => ['idx_submit_ip_time'=>'KEY idx_submit_ip_time(ip_address,attempted_at)','idx_submit_device_time'=>'KEY idx_submit_device_time(device_hash,attempted_at)','idx_submit_tiktok_time'=>'KEY idx_submit_tiktok_time(tiktok_account,attempted_at)'],
         'admin_login_attempts' => ['idx_admin_attempt_ip_time'=>'KEY idx_admin_attempt_ip_time(ip_address,attempted_at)','idx_admin_attempt_user_time'=>'KEY idx_admin_attempt_user_time(username,attempted_at)'],
     ];
@@ -266,8 +292,9 @@ function runFullDatabaseMigration(): array {
         }
     }
     if (migrationTableExists('database_migrations')) {
-        db()->prepare('INSERT IGNORE INTO database_migrations(migration_key,description) VALUES(?,?)')
-            ->execute(['full_schema_2026_07_24','Migrasi penuh additive-only skema Quiz TikTok']);
+        $history = db()->prepare('INSERT IGNORE INTO database_migrations(migration_key,description) VALUES(?,?)');
+        $history->execute(['full_schema_2026_07_24','Migrasi penuh additive-only skema Quiz TikTok']);
+        $history->execute(['raffle_system_2026_10_03','Struktur hadiah dan hasil pengundian']);
     }
     return ['applied'=>$applied,'remaining'=>databaseMigrationPlan()];
 }

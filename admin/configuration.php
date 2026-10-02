@@ -19,6 +19,8 @@ ob_start(static function (string $html): string {
         ],
         $html
     );
+    $resetDrawingCard = '<div class="session-box"><div><h2>Reset undian</h2><p class="muted">Menghapus seluruh hasil pemenang. Semua kupon kembali tersedia dan daftar hadiah dikembalikan ke status belum diundi. Data peserta dan hadiah tetap tersimpan.</p></div><form class="configuration-action-form" method="post" data-confirm="Reset seluruh hasil undian? Semua hadiah akan kembali berstatus belum diundi."><input type="hidden" name="csrf_token" value="'.e(csrfToken()).'"><input type="hidden" name="action" value="reset_drawing"><button type="submit" class="warning-button">Reset Undian</button></form></div>';
+    $html = str_replace('<div class="session-box"><div><h2>Hapus seluruh data percobaan</h2>', $resetDrawingCard.'<div class="session-box"><div><h2>Hapus seluruh data percobaan</h2>', $html);
     $script = '<script nonce="'.cspNonce().'">document.querySelectorAll("form[data-confirm]").forEach(function(form){form.addEventListener("submit",function(event){if(!window.confirm(form.dataset.confirm||"Lanjutkan?"))event.preventDefault();});});</script>';
     return str_replace('</body>', $script.'</body>', $html);
 });
@@ -69,10 +71,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->commit();
                 rotateCsrf();
                 $message = 'Pembatas perangkat dan riwayat percobaan sudah direset. Setiap perangkat dapat mengirim satu pendaftaran baru.';
+            } elseif ($action === 'reset_drawing') {
+                if (!migrationTableExists('raffle_winners')) {
+                    throw new InvalidArgumentException('Database pengundian belum tersedia. Jalankan Migrasi Database Penuh terlebih dahulu.');
+                }
+                $pdo->beginTransaction();
+                $deletedWinners = $pdo->exec('DELETE FROM raffle_winners');
+                $pdo->commit();
+                rotateCsrf();
+                $message = $deletedWinners > 0
+                    ? $deletedWinners.' hasil pengundian berhasil direset. Semua kupon kembali tersedia dan seluruh hadiah berstatus belum diundi.'
+                    : 'Belum ada hasil pengundian yang perlu direset. Semua kupon masih tersedia.';
             } elseif ($action === 'clear_data' && (string)($_POST['confirm_text'] ?? '') === 'HAPUS SEMUA DATA') {
                 $pdo->beginTransaction();
                 $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
-                foreach (['participant_answer_images','participant_answers','raffle_numbers','participants','participant_identity_locks','submission_attempts'] as $table) {
+                foreach (['raffle_winners','participant_answer_images','participant_answers','raffle_numbers','participants','participant_identity_locks','submission_attempts'] as $table) {
                     $pdo->exec('TRUNCATE TABLE `'.$table.'`');
                 }
                 $pdo->exec('UPDATE raffle_sequence SET next_number=1 WHERE id=1');
