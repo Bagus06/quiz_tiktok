@@ -1,9 +1,30 @@
 (() => {
     const canvas = document.getElementById('drawConfetti');
     const winnerCard = document.getElementById('drawWinnerCard');
+    const winnerWhatsAppLink = document.getElementById('winnerWhatsAppLink');
+    const winnerPrize = document.getElementById('winnerPrize');
     const digitDisplay = document.getElementById('drawDigitDisplay');
     const digits = Array.from(document.querySelectorAll('.draw-digit'));
     if (!canvas || !winnerCard) return;
+
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = async (...requestArguments) => {
+        const response = await nativeFetch(...requestArguments);
+        const requestUrl = String(requestArguments[0] || '');
+        if (requestUrl.includes('draw.php') && response.headers.get('content-type')?.includes('application/json')) {
+            response.clone().json().then(data => {
+                const whatsapp = String(data?.winner?.whatsapp || '').replace(/\D+/g, '');
+                if (!whatsapp || !winnerWhatsAppLink) return;
+                const name = String(data?.winner?.name || 'Peserta');
+                const raffle = String(data?.winner?.raffle_number || '');
+                const prize = String(winnerPrize?.textContent || 'hadiah undian');
+                const message = `Selamat ${name}!\n\nNomor undian ${raffle} terpilih sebagai pemenang hadiah ${prize} dari Affan Elektronik.\n\nSilakan membalas pesan ini dengan salah satu pilihan berikut:\n1. Pengiriman hadiah: kirimkan nama penerima, alamat rumah lengkap, patokan alamat, dan kode pos.\n2. Pengambilan langsung: konfirmasikan bahwa hadiah akan diambil langsung di lokasi Affan Elektronik.\n\nPanitia akan memberikan informasi lanjutan setelah menerima konfirmasi Anda.`;
+                winnerWhatsAppLink.href = 'https://wa.me/' + encodeURIComponent(whatsapp) + '?text=' + encodeURIComponent(message);
+                winnerWhatsAppLink.hidden = false;
+            }).catch(() => {});
+        }
+        return response;
+    };
 
     let celebrated = !winnerCard.hidden;
     let audioContext = null;

@@ -122,6 +122,7 @@ unset($_SESSION['errors'], $_SESSION['old']);
             <input type="text" name="website" value="" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
             <input type="hidden" name="csrf_token" value="<?= e(csrfToken()) ?>">
             <input type="hidden" name="form_proof" value="<?= e(formProof()) ?>">
+            <input type="hidden" name="browser_device_id" id="browserDeviceId" value="">
 
             <section class="form-section participant-section">
                 <div class="form-section-heading">
@@ -282,6 +283,23 @@ unset($_SESSION['errors'], $_SESSION['old']);
         </div>
     </div>
 </div>
+<script nonce="<?=cspNonce()?>">
+(function () {
+    const field = document.getElementById('browserDeviceId');
+    if (!field) return;
+    const storageKey = 'quiz_tiktok_device_id';
+    let deviceId = '';
+    try { deviceId = localStorage.getItem(storageKey) || ''; } catch (error) {}
+    if (!/^[a-f0-9]{64}$/.test(deviceId)) {
+        const bytes = new Uint8Array(32);
+        if (window.crypto && typeof window.crypto.getRandomValues === 'function') window.crypto.getRandomValues(bytes);
+        else for (let index = 0; index < bytes.length; index++) bytes[index] = Math.floor(Math.random() * 256);
+        deviceId = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+        try { localStorage.setItem(storageKey, deviceId); } catch (error) {}
+    }
+    field.value = deviceId;
+})();
+</script>
 <script nonce="<?=cspNonce()?>">
 (function () {
     const modal = document.getElementById('guideModal');

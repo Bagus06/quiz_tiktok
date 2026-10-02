@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS participants (
  device_hash CHAR(64) NOT NULL,
  subscriber_image_hash CHAR(64) NOT NULL,
  comment_image_hash CHAR(64) NOT NULL,
+ subscriber_image_phash CHAR(16) NULL,
+ comment_image_phash CHAR(16) NULL,
  risk_status ENUM('clear','flagged') NOT NULL DEFAULT 'clear',
  risk_score SMALLINT UNSIGNED NOT NULL DEFAULT 0,
  risk_reasons VARCHAR(1000) NULL,

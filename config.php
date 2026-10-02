@@ -74,7 +74,7 @@ function db(): PDO {
 }
 function participantSubmissionMissingColumns(): array {
     try {
-        $required = ['privacy_consent_at', 'privacy_policy_version', 'age_confirmed_at'];
+        $required = ['privacy_consent_at', 'privacy_policy_version', 'age_confirmed_at', 'subscriber_image_phash', 'comment_image_phash'];
         $columns = db()->query('SHOW COLUMNS FROM participants')->fetchAll(PDO::FETCH_COLUMN);
         return array_values(array_diff($required, $columns));
     } catch (Throwable $error) {
@@ -88,6 +88,8 @@ function upgradeParticipantSubmissionSchema(): array {
         'privacy_consent_at' => 'DATETIME NULL AFTER risk_reasons',
         'privacy_policy_version' => 'VARCHAR(20) NULL AFTER privacy_consent_at',
         'age_confirmed_at' => 'DATETIME NULL AFTER privacy_policy_version',
+        'subscriber_image_phash' => 'CHAR(16) NULL AFTER comment_image_hash',
+        'comment_image_phash' => 'CHAR(16) NULL AFTER subscriber_image_phash',
     ];
     $missing = participantSubmissionMissingColumns();
     if (in_array('schema_check_failed', $missing, true)) throw new RuntimeException('Database tidak dapat diperiksa.');
@@ -142,6 +144,11 @@ function deviceHash(): string {
     }
     return hash_hmac('sha256', $id, appSecret());
 }
+function perceptualImageHash(string $file,string $mime):string{
+    if(!extension_loaded('gd')||!is_file($file))return'';$source=null;if($mime==='image/jpeg')$source=@imagecreatefromjpeg($file);elseif($mime==='image/png')$source=@imagecreatefrompng($file);elseif($mime==='image/webp'&&function_exists('imagecreatefromwebp'))$source=@imagecreatefromwebp($file);if(!$source)return'';
+    $small=imagecreatetruecolor(9,8);if(!$small){imagedestroy($source);return'';}imagecopyresampled($small,$source,0,0,0,0,9,8,imagesx($source),imagesy($source));$bits='';for($y=0;$y<8;$y++){for($x=0;$x<8;$x++){$left=imagecolorat($small,$x,$y);$right=imagecolorat($small,$x+1,$y);$leftGray=((($left>>16)&255)*299+(($left>>8)&255)*587+($left&255)*114);$rightGray=((($right>>16)&255)*299+(($right>>8)&255)*587+($right&255)*114);$bits.=$leftGray>$rightGray?'1':'0';}}imagedestroy($small);imagedestroy($source);$hash='';for($i=0;$i<64;$i+=4)$hash.=dechex(bindec(substr($bits,$i,4)));return$hash;
+}
+function perceptualHashDistance(string $first,string $second):int{$distance=0;$bitCounts=[0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4];for($i=0;$i<16;$i++)$distance+=$bitCounts[hexdec($first[$i])^hexdec($second[$i])];return$distance;}
 function signedValue(string $value): string {
     return $value.'.'.hash_hmac('sha256', $value, appSecret());
 }

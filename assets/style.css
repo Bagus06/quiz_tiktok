@@ -551,6 +551,8 @@ body:has(.branded-card){background:radial-gradient(circle at 12% 8%,rgba(185,28,
 .draw-winner-card h2{font-size:clamp(23px,4vw,34px);color:#991b1b}
 .draw-winner-card .winner-prize-line{margin:8px 0;color:#92400e;font-size:17px}
 .winner-prize-line strong{color:#7c2d12}
+.winner-whatsapp-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;margin-top:10px;padding:0 15px;border-radius:9px;background:#16a34a;color:#fff;text-decoration:none;font-weight:800;box-shadow:0 7px 16px rgba(22,163,74,.22)}
+.winner-whatsapp-button:hover{background:#15803d}.winner-whatsapp-button[hidden]{display:none}
 @keyframes winnerReveal{from{opacity:0;transform:translateY(18px) scale(.96)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.draw-winner-card:not([hidden]){animation:none}}
 

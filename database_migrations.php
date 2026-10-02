@@ -46,6 +46,8 @@ function fullMigrationTableDefinitions(): array {
             device_hash CHAR(64) NULL,
             subscriber_image_hash CHAR(64) NULL,
             comment_image_hash CHAR(64) NULL,
+            subscriber_image_phash CHAR(16) NULL,
+            comment_image_phash CHAR(16) NULL,
             risk_status ENUM('clear','flagged') NOT NULL DEFAULT 'clear',
             risk_score SMALLINT UNSIGNED NOT NULL DEFAULT 0,
             risk_reasons VARCHAR(1000) NULL,
@@ -181,7 +183,7 @@ function fullMigrationColumnDefinitions(): array {
             'id'=>'BIGINT UNSIGNED NULL','name'=>'VARCHAR(100) NULL','name_normalized'=>'VARCHAR(100) NULL','whatsapp'=>'VARCHAR(20) NULL',
             'tiktok_account'=>'VARCHAR(100) NULL','tiktok_profile_url'=>'VARCHAR(500) NULL','subscriber_photo'=>'VARCHAR(255) NULL',
             'comment_photo'=>'VARCHAR(255) NULL','token'=>'VARCHAR(32) NULL','submit_ip'=>'VARCHAR(45) NULL','device_hash'=>'CHAR(64) NULL',
-            'subscriber_image_hash'=>'CHAR(64) NULL','comment_image_hash'=>'CHAR(64) NULL',
+            'subscriber_image_hash'=>'CHAR(64) NULL','comment_image_hash'=>'CHAR(64) NULL','subscriber_image_phash'=>'CHAR(16) NULL','comment_image_phash'=>'CHAR(16) NULL',
             'risk_status'=>"ENUM('clear','flagged') NOT NULL DEFAULT 'clear'",'risk_score'=>'SMALLINT UNSIGNED NOT NULL DEFAULT 0',
             'risk_reasons'=>'VARCHAR(1000) NULL','privacy_consent_at'=>'DATETIME NULL','privacy_policy_version'=>'VARCHAR(20) NULL',
             'age_confirmed_at'=>'DATETIME NULL','status'=>"ENUM('pending','reviewed') NOT NULL DEFAULT 'pending'",
@@ -256,6 +258,32 @@ function runFullDatabaseMigration(): array {
         $applied[] = (string)$operation['label'];
     }
 
+    // Isi sidik visual hanya pada data lama yang masih kosong; nilai dan foto asli tidak diubah.
+    if (migrationTableExists('participants') && migrationColumnExists('participants','subscriber_image_phash') && migrationColumnExists('participants','comment_image_phash') && extension_loaded('gd')) {
+        $rows = db()->query("SELECT id,subscriber_photo,comment_photo,subscriber_image_phash,comment_image_phash FROM participants WHERE subscriber_image_phash IS NULL OR comment_image_phash IS NULL")->fetchAll();
+        $update = db()->prepare('UPDATE participants SET subscriber_image_phash=COALESCE(subscriber_image_phash,?),comment_image_phash=COALESCE(comment_image_phash,?) WHERE id=?');
+        $uploadRoot = realpath(__DIR__.'/uploads');
+        $updatedHashes = 0;
+        if ($uploadRoot !== false) {
+            $mimeDetector = new finfo(FILEINFO_MIME_TYPE);
+            foreach ($rows as $row) {
+                $hashes = [];
+                foreach (['subscriber','comment'] as $kind) {
+                    $existing = (string)$row[$kind.'_image_phash'];
+                    $relative = ltrim(str_replace('\\','/',(string)$row[$kind.'_photo']),'/');
+                    $path = realpath(__DIR__.'/'.$relative);
+                    $insideUploads = $path !== false && strpos($path,$uploadRoot.DIRECTORY_SEPARATOR) === 0;
+                    $hashes[$kind] = $existing !== '' ? $existing : ($insideUploads ? perceptualImageHash($path,(string)$mimeDetector->file($path)) : '');
+                }
+                if ($hashes['subscriber'] !== '' || $hashes['comment'] !== '') {
+                    $update->execute([$hashes['subscriber'] ?: null,$hashes['comment'] ?: null,(int)$row['id']]);
+                    $updatedHashes += $update->rowCount();
+                }
+            }
+        }
+        if ($updatedHashes > 0) $applied[] = 'Isi sidik visual '.$updatedHashes.' bukti peserta lama';
+    }
+
     // Seed-only operations: INSERT IGNORE never overwrites existing target data.
     if (migrationTableExists('questions')) {
         $stmt = db()->prepare('INSERT IGNORE INTO questions(question_number,is_active) VALUES(?,1)');
@@ -295,6 +323,7 @@ function runFullDatabaseMigration(): array {
         $history = db()->prepare('INSERT IGNORE INTO database_migrations(migration_key,description) VALUES(?,?)');
         $history->execute(['full_schema_2026_07_24','Migrasi penuh additive-only skema Quiz TikTok']);
         $history->execute(['raffle_system_2026_10_03','Struktur hadiah dan hasil pengundian']);
+        $history->execute(['anti_cheat_hardening_2026_10_03','Identitas browser, sidik visual bukti, dan satu pemenang per peserta']);
     }
     return ['applied'=>$applied,'remaining'=>databaseMigrationPlan()];
 }
